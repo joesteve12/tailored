@@ -1,11 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/utils/money.dart';
 import '../../../core/utils/order_labels.dart';
 import '../../../core/utils/payment_labels.dart';
+import '../../../core/utils/share_document.dart';
 import '../../../core/widgets/async_error_view.dart';
 import '../../../core/widgets/feedback.dart';
+import '../../documents/data/document_repository.dart';
+import '../../documents/models/document_issue.dart';
+import '../../documents/state/document_providers.dart';
 import '../../payments/data/payment_repository.dart';
+import '../../payments/widgets/money_sheet_parts.dart';
+import '../../payments/widgets/record_refund_sheet.dart';
 import '../../payments/models/payment.dart';
 import '../../payments/state/payment_providers.dart';
 import '../models/order.dart';
@@ -22,11 +29,17 @@ import '../../tasks/utils/task_labels.dart';
 /// reference screenshots the owner shared.
 ///
 /// Two tabs:
-///   • Payments — every payment recorded against this order, including
-///     voided ones (rendered greyed / struck-through). Active rows have a
-///     void action; voided rows do not. This is the *only* place payment
-///     history is shown; the money-summary card above only owns the
-///     record-payment action.
+///   • Payments — the order's money timeline: payments, refunds and tips,
+///     newest first, each with its own receipt. This is the *only* place
+///     history is shown; the money card above owns the actions that create
+///     these rows.
+///
+///     **No voided rows.** Voiding was a server-side soft delete, and every
+///     query touching payments had to remember to filter the flag — several
+///     didn't. Rows are now either present or really gone, and the record of
+///     what was printed survives in `document_issues` instead. Nothing here
+///     renders greyed or struck through, and nothing should be added that
+///     does.
 ///   • Status — the append-only log of order- and item-status transitions,
 ///     backed by `GET /orders/{id}/status-events`. Written by the backend
 ///     on `PATCH /orders/{id}/status` and on item edits where `status`
@@ -56,57 +69,130 @@ enum _ActivityTab { payments, status }
 class _OrderActivitySectionState extends ConsumerState<OrderActivitySection> {
   _ActivityTab _tab = _ActivityTab.payments;
 
-  /// Id of the payment currently being voided — drives a per-row spinner
-  /// while the DELETE (soft delete) is in flight.
-  String? _voidingId;
+  /// Id of the payment currently being deleted — drives a per-row spinner
+  /// while the DELETE is in flight. Null while idle.
+  String? _deletingId;
+
+  /// Id of the payment whose receipt is being prepared. Separate from
+  /// [_deletingId] so fetching a receipt doesn't grey out the delete actions
+  /// on every other row.
+  String? _receiptId;
 
   String get _orderId => widget.order.id;
 
-  void _refreshAfterVoid() {
-    // Same three surfaces as the record-payment path in PaymentSection:
-    // log, order detail (paid/balance move), orders list (payment_status).
+  void _refreshAfterDelete() {
+    // Same three surfaces the money card refreshes after recording. The
+    // documents log is invalidated too: the deleted payment's audit row now
+    // has a null paymentId, and a stale list would keep claiming a receipt
+    // exists for a row that's gone.
     ref.invalidate(paymentsProvider(_orderId));
+    ref.invalidate(orderDocumentsProvider(_orderId));
     ref.read(orderDetailProvider(_orderId).notifier).refresh();
     ref.read(orderListProvider.notifier).refresh().catchError((_) {});
   }
 
-  Future<void> _voidPayment(Payment payment) async {
-    final confirmed = await showDialog<bool>(
+  /// Fetches and shares the receipt for one money row.
+  ///
+  /// Every row has one, including refunds and standalone tips — a client who
+  /// was given money back has at least as much reason to want it in writing
+  /// as one who handed it over.
+  Future<void> _shareReceipt(Payment payment) async {
+    final format = await pickDocumentFormat(context);
+    if (format == null || !mounted) return;
+
+    setState(() => _receiptId = payment.id);
+    try {
+      final bytes = await ref.read(documentRepositoryProvider).fetchPaymentReceipt(
+            _orderId,
+            payment.id,
+            format: format.apiValue,
+          );
+      final label = payment.isRefund ? 'refund' : 'receipt';
+      final stem = safeFileSegment(
+          payment.receiptNumber ?? widget.order.orderNumber);
+      await shareDocumentBytes(
+        bytes,
+        fileName: '${label}_$stem.${format.extension}',
+        mimeType: format.mimeType,
+        text: '${payment.isRefund ? 'Refund' : 'Receipt'} · '
+            'order ${widget.order.orderNumber}',
+      );
+      // A receipt has now demonstrably gone out; the delete warning below
+      // reads this list to decide how hard to push back.
+      ref.invalidate(orderDocumentsProvider(_orderId));
+    } catch (e) {
+      if (mounted) {
+        showErrorSnackbar(context, e, action: 'Could not prepare receipt');
+      }
+    } finally {
+      if (mounted) setState(() => _receiptId = null);
+    }
+  }
+
+  /// Looks up whether a receipt has already been generated for this row.
+  ///
+  /// Failure degrades to null, which makes the dialog show the *stronger*
+  /// copy. Erring toward the harsher warning is the right way round for a
+  /// destructive action: the cost of over-warning is a moment's reading, the
+  /// cost of under-warning is a deleted record of real money.
+  Future<DocumentIssue?> _existingReceipt(String paymentId) async {
+    try {
+      final documents =
+          await ref.read(orderDocumentsProvider(_orderId).future);
+      return receiptForPayment(documents, paymentId);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _deletePayment(Payment payment) async {
+    final receipt = await _existingReceipt(payment.id);
+    if (!mounted) return;
+
+    final choice = await showDialog<_DeleteChoice>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Void payment?'),
-        content: Text(
-          'Remove the ${payment.amount.toStringAsFixed(2)} '
-          '${paymentMethodLabel(payment.method).toLowerCase()} payment? '
-          'It stays in the log as voided, and the balance goes back up.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Void'),
-          ),
-        ],
+      builder: (context) => _DeletePaymentDialog(
+        payment: payment,
+        receipt: receipt,
       ),
     );
-    if (confirmed != true || !mounted) return;
+    if (choice == null || !mounted) return;
 
-    setState(() => _voidingId = payment.id);
+    // "Log a refund instead" — the honest path when the client actually got
+    // the money back. Deleting would make it look like the payment never
+    // happened; a refund records both halves of what occurred.
+    if (choice == _DeleteChoice.refund) {
+      final payments = ref.read(paymentsProvider(_orderId)).valueOrNull ?? [];
+      final ok = await showModalBottomSheet<bool>(
+        context: context,
+        isScrollControlled: true,
+        builder: (context) => RecordRefundSheet(
+          orderId: _orderId,
+          maxAmount: widget.order.amountPaid,
+          dateFloor: paymentFloorFor(payments, widget.order),
+          initialAmount: payment.amount,
+        ),
+      );
+      if (ok == true) _refreshAfterDelete();
+      return;
+    }
+
+    setState(() => _deletingId = payment.id);
     try {
       await ref
           .read(paymentRepositoryProvider)
-          .voidPayment(_orderId, payment.id);
-      _refreshAfterVoid();
-      if (mounted) showSuccessSnackbar(context, 'Payment voided');
+          .deletePayment(_orderId, payment.id);
+      _refreshAfterDelete();
+      if (mounted) {
+        showSuccessSnackbar(
+            context, payment.isRefund ? 'Refund deleted' : 'Payment deleted');
+      }
     } catch (e) {
       if (mounted) {
-        showErrorSnackbar(context, e, action: 'Could not void payment');
+        showErrorSnackbar(context, e, action: 'Could not delete');
       }
     } finally {
-      if (mounted) setState(() => _voidingId = null);
+      if (mounted) setState(() => _deletingId = null);
     }
   }
 
@@ -125,8 +211,10 @@ class _OrderActivitySectionState extends ConsumerState<OrderActivitySection> {
         switch (_tab) {
           _ActivityTab.payments => _PaymentsTab(
               orderId: _orderId,
-              onVoid: _voidPayment,
-              voidingId: _voidingId,
+              onReceipt: _shareReceipt,
+              onDelete: _deletePayment,
+              deletingId: _deletingId,
+              receiptId: _receiptId,
             ),
           _ActivityTab.status => _StatusTab(orderId: _orderId),
         },
@@ -263,17 +351,21 @@ class _ScrollableEntriesState extends State<_ScrollableEntries> {
 class _PaymentsTab extends ConsumerWidget {
   const _PaymentsTab({
     required this.orderId,
-    required this.onVoid,
-    required this.voidingId,
+    required this.onReceipt,
+    required this.onDelete,
+    required this.deletingId,
+    required this.receiptId,
   });
 
   final String orderId;
-  final ValueChanged<Payment> onVoid;
-  final String? voidingId;
+  final ValueChanged<Payment> onReceipt;
+  final ValueChanged<Payment> onDelete;
+  final String? deletingId;
+  final String? receiptId;
 
-  /// ~4 payment rows. Payment rows run taller than status rows (amount +
-  /// method line, sometimes a note), so this cap is a touch higher.
-  static const double _maxHeight = 360;
+  /// ~4 rows. Money rows run taller than status rows (amount + method line,
+  /// sometimes a note or a refund reason), so this cap is a touch higher.
+  static const double _maxHeight = 380;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -295,9 +387,11 @@ class _PaymentsTab extends ConsumerWidget {
             for (final p in payments)
               _PaymentRow(
                 payment: p,
-                busy: voidingId == p.id,
-                voidingLocked: voidingId != null,
-                onVoid: () => onVoid(p),
+                deleting: deletingId == p.id,
+                preparingReceipt: receiptId == p.id,
+                actionsLocked: deletingId != null,
+                onReceipt: () => onReceipt(p),
+                onDelete: () => onDelete(p),
               ),
           ],
         );
@@ -306,27 +400,55 @@ class _PaymentsTab extends ConsumerWidget {
   }
 }
 
+/// One row of the money timeline. Three shapes, keyed off the row's kind:
+///
+///   payment         teal dot,  `+₦50,000`, method · date · RCP-0007
+///   payment + tip   as above, with a `Tip ₦5,000` chip
+///   standalone tip  amber dot, `Tip ₦5,000`
+///   refund          error dot, `−₦9,500`, method · date · reason
+///
+/// The sign is carried in the text, not only in the colour. Colour alone
+/// fails for the substantial minority of men who can't distinguish these
+/// hues, and telling a payment from a refund is not an optional detail.
 class _PaymentRow extends StatelessWidget {
   const _PaymentRow({
     required this.payment,
-    required this.busy,
-    required this.voidingLocked,
-    required this.onVoid,
+    required this.deleting,
+    required this.preparingReceipt,
+    required this.actionsLocked,
+    required this.onReceipt,
+    required this.onDelete,
   });
 
   final Payment payment;
-  final bool busy;
-  final bool voidingLocked;
-  final VoidCallback onVoid;
+  final bool deleting;
+  final bool preparingReceipt;
+  final bool actionsLocked;
+  final VoidCallback onReceipt;
+  final VoidCallback onDelete;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final muted = payment.isVoided;
+    final isRefund = payment.isRefund;
+    final isTipOnly = payment.isStandaloneTip;
+
+    final Color accent = isRefund
+        ? scheme.error
+        : isTipOnly
+            ? Colors.amber.shade800
+            : Colors.green.shade700;
+
+    final String chipLabel =
+        isRefund ? 'Refund' : (isTipOnly ? 'Tip' : 'Payment');
+
+    final String amountText = isTipOnly
+        ? 'Tip ${formatNaira(payment.tipAmount)}'
+        : formatSignedNaira(payment.signedAmount);
+
     final amountStyle = Theme.of(context).textTheme.bodyLarge?.copyWith(
           fontWeight: FontWeight.w600,
-          color: muted ? scheme.outline : Colors.green.shade700,
-          decoration: muted ? TextDecoration.lineThrough : null,
+          color: accent,
         );
 
     return Padding(
@@ -334,7 +456,7 @@ class _PaymentRow extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const _EntryDot(color: Colors.teal),
+          _EntryDot(color: isRefund ? scheme.error : Colors.teal),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -343,16 +465,30 @@ class _PaymentRow extends StatelessWidget {
                 Row(
                   children: [
                     _MiniChip(
-                      label: 'Payment',
-                      color: muted
-                          ? scheme.surfaceContainerHighest
-                          : Colors.green.shade50,
-                      textColor: muted ? scheme.outline : Colors.green.shade800,
+                      label: chipLabel,
+                      color: isRefund
+                          ? scheme.errorContainer
+                          : (isTipOnly
+                              ? Colors.amber.shade50
+                              : Colors.green.shade50),
+                      textColor: isRefund ? scheme.onErrorContainer : accent,
                     ),
-                    if (muted) ...[
+                    // A tip riding along with a payment gets its own chip so
+                    // the amount beside it stays readable as the payment
+                    // alone — which is what it is, since tips never count
+                    // toward the balance.
+                    if (!isTipOnly && payment.hasTip) ...[
                       const SizedBox(width: 6),
                       _MiniChip(
-                        label: 'Voided',
+                        label: 'Tip ${formatNaira(payment.tipAmount)}',
+                        color: Colors.amber.shade50,
+                        textColor: Colors.amber.shade900,
+                      ),
+                    ],
+                    if (payment.receiptNumber != null) ...[
+                      const SizedBox(width: 6),
+                      _MiniChip(
+                        label: payment.receiptNumber!,
                         color: scheme.surfaceContainerHighest,
                         textColor: scheme.outline,
                       ),
@@ -371,16 +507,29 @@ class _PaymentRow extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.baseline,
                   textBaseline: TextBaseline.alphabetic,
                   children: [
-                    Text(payment.amount.toStringAsFixed(2), style: amountStyle),
+                    Text(amountText, style: amountStyle),
                     const SizedBox(width: 8),
-                    Text(
-                      'via ${paymentMethodLabel(payment.method)}',
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            color: muted ? scheme.outline : null,
-                          ),
+                    Flexible(
+                      child: Text(
+                        'via ${paymentMethodLabel(payment.method)}',
+                        style: Theme.of(context).textTheme.bodyMedium,
+                      ),
                     ),
                   ],
                 ),
+                // A refund without a reason is worse than no record at all
+                // when someone queries the figure a year later, so it always
+                // shows.
+                if (isRefund && payment.reason != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text(
+                      payment.reason!,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: scheme.error,
+                          ),
+                    ),
+                  ),
                 if (payment.notes != null && payment.notes!.isNotEmpty)
                   Padding(
                     padding: const EdgeInsets.only(top: 2),
@@ -392,26 +541,137 @@ class _PaymentRow extends StatelessWidget {
               ],
             ),
           ),
-          if (!muted)
-            (busy
-                ? const Padding(
-                    padding: EdgeInsets.only(right: 8, top: 4),
-                    child: SizedBox(
-                      height: 18,
-                      width: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    ),
-                  )
-                : IconButton(
-                    tooltip: 'Void',
-                    visualDensity: VisualDensity.compact,
-                    icon: const Icon(Icons.delete_outline, size: 20),
-                    onPressed: voidingLocked ? null : onVoid,
-                  )),
+          if (preparingReceipt)
+            const Padding(
+              padding: EdgeInsets.only(right: 8, top: 4),
+              child: SizedBox(
+                height: 18,
+                width: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            )
+          else
+            IconButton(
+              tooltip: 'Share receipt',
+              visualDensity: VisualDensity.compact,
+              icon: const Icon(Icons.receipt_long_outlined, size: 20),
+              onPressed: actionsLocked ? null : onReceipt,
+            ),
+          if (deleting)
+            const Padding(
+              padding: EdgeInsets.only(right: 8, top: 4),
+              child: SizedBox(
+                height: 18,
+                width: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            )
+          else
+            IconButton(
+              tooltip: 'Delete',
+              visualDensity: VisualDensity.compact,
+              icon: const Icon(Icons.delete_outline, size: 20),
+              onPressed: actionsLocked ? null : onDelete,
+            ),
         ],
       ),
     );
   }
+}
+
+/// What the delete dialog came back with.
+enum _DeleteChoice { refund, delete }
+
+/// Escalating warning for removing a money row.
+///
+/// The strength of the copy tracks whether a receipt has already gone out. A
+/// client holding a printed receipt for a payment the shop has since deleted
+/// is a much worse position than a mistyped figure nobody saw, so that case
+/// says so explicitly and names the document.
+///
+/// Both variants offer **"Log a refund instead"**, because that is the right
+/// action in the case operators will most often be in: the client got the
+/// money back. Deleting would erase the fact that they ever paid.
+class _DeletePaymentDialog extends StatelessWidget {
+  const _DeletePaymentDialog({
+    required this.payment,
+    required this.receipt,
+  });
+
+  final Payment payment;
+  final DocumentIssue? receipt;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final isRefund = payment.isRefund;
+    final amount = payment.isStandaloneTip ? payment.tipAmount : payment.amount;
+    final noun = isRefund
+        ? 'refund'
+        : (payment.isStandaloneTip ? 'tip' : 'payment');
+
+    return AlertDialog(
+      title: Text('Delete this ${formatNaira(amount)} $noun?'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (receipt != null) ...[
+            Text(
+              'A receipt (${receipt!.documentNumber ?? 'issued'}) was '
+              'generated for this on ${_fmtShortDate(receipt!.generatedAt)}.',
+              style: Theme.of(context)
+                  .textTheme
+                  .bodyMedium
+                  ?.copyWith(color: scheme.error),
+            ),
+            const SizedBox(height: 8),
+          ],
+          Text(
+            isRefund
+                ? 'This removes the record entirely, and the client will look '
+                    'as though they were never refunded.'
+                : 'This removes the record entirely. Only do this if it was '
+                    'entered by mistake.',
+          ),
+          if (!isRefund) ...[
+            const SizedBox(height: 8),
+            Text(
+              'If the client actually received this money back, log a refund '
+              'instead — deleting will make it look like the payment never '
+              'happened.',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+          ],
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        if (!isRefund)
+          TextButton(
+            onPressed: () => Navigator.pop(context, _DeleteChoice.refund),
+            child: const Text('Log a refund'),
+          ),
+        TextButton(
+          style: TextButton.styleFrom(foregroundColor: scheme.error),
+          onPressed: () => Navigator.pop(context, _DeleteChoice.delete),
+          child: Text(receipt != null ? 'Delete anyway' : 'Delete'),
+        ),
+      ],
+    );
+  }
+}
+
+String _fmtShortDate(DateTime dt) {
+  const months = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+  ];
+  final local = dt.toLocal();
+  return '${local.day} ${months[local.month - 1]}';
 }
 
 // ── Status tab ──────────────────────────────────────────────────────────

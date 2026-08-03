@@ -29,6 +29,10 @@ mixin _$Order {
   String get priority => throw _privateConstructorUsedError;
   @JsonKey(name: 'due_date')
   DateTime get dueDate => throw _privateConstructorUsedError;
+  @JsonKey(name: 'items_subtotal', fromJson: decimalStringToDouble)
+  double get itemsSubtotal => throw _privateConstructorUsedError;
+  @JsonKey(name: 'addons_total', fromJson: decimalStringToDouble)
+  double get addonsTotal => throw _privateConstructorUsedError;
   @JsonKey(name: 'subtotal', fromJson: decimalStringToDouble)
   double get subtotal => throw _privateConstructorUsedError;
   @JsonKey(name: 'discount_type')
@@ -37,6 +41,8 @@ mixin _$Order {
   double get discountValue => throw _privateConstructorUsedError;
   @JsonKey(name: 'discount_amount', fromJson: decimalStringToDouble)
   double get discountAmount => throw _privateConstructorUsedError;
+  @JsonKey(name: 'discount_includes_addons')
+  bool get discountIncludesAddons => throw _privateConstructorUsedError;
   @JsonKey(name: 'total_amount', fromJson: decimalStringToDouble)
   double get totalAmount => throw _privateConstructorUsedError;
   @JsonKey(name: 'amount_paid', fromJson: decimalStringToDouble)
@@ -45,6 +51,7 @@ mixin _$Order {
   String get paymentStatus => throw _privateConstructorUsedError;
   String? get notes => throw _privateConstructorUsedError;
   List<OrderItem> get items => throw _privateConstructorUsedError;
+  List<OrderAddon> get addons => throw _privateConstructorUsedError;
   List<OrderMedia> get media => throw _privateConstructorUsedError;
   @JsonKey(name: 'created_at')
   DateTime get createdAt => throw _privateConstructorUsedError;
@@ -70,6 +77,10 @@ abstract class $OrderCopyWith<$Res> {
       String status,
       String priority,
       @JsonKey(name: 'due_date') DateTime dueDate,
+      @JsonKey(name: 'items_subtotal', fromJson: decimalStringToDouble)
+      double itemsSubtotal,
+      @JsonKey(name: 'addons_total', fromJson: decimalStringToDouble)
+      double addonsTotal,
       @JsonKey(name: 'subtotal', fromJson: decimalStringToDouble)
       double subtotal,
       @JsonKey(name: 'discount_type') String discountType,
@@ -77,6 +88,7 @@ abstract class $OrderCopyWith<$Res> {
       double discountValue,
       @JsonKey(name: 'discount_amount', fromJson: decimalStringToDouble)
       double discountAmount,
+      @JsonKey(name: 'discount_includes_addons') bool discountIncludesAddons,
       @JsonKey(name: 'total_amount', fromJson: decimalStringToDouble)
       double totalAmount,
       @JsonKey(name: 'amount_paid', fromJson: decimalStringToDouble)
@@ -84,6 +96,7 @@ abstract class $OrderCopyWith<$Res> {
       @JsonKey(name: 'payment_status') String paymentStatus,
       String? notes,
       List<OrderItem> items,
+      List<OrderAddon> addons,
       List<OrderMedia> media,
       @JsonKey(name: 'created_at') DateTime createdAt});
 }
@@ -109,15 +122,19 @@ class _$OrderCopyWithImpl<$Res, $Val extends Order>
     Object? status = null,
     Object? priority = null,
     Object? dueDate = null,
+    Object? itemsSubtotal = null,
+    Object? addonsTotal = null,
     Object? subtotal = null,
     Object? discountType = null,
     Object? discountValue = null,
     Object? discountAmount = null,
+    Object? discountIncludesAddons = null,
     Object? totalAmount = null,
     Object? amountPaid = null,
     Object? paymentStatus = null,
     Object? notes = freezed,
     Object? items = null,
+    Object? addons = null,
     Object? media = null,
     Object? createdAt = null,
   }) {
@@ -146,6 +163,14 @@ class _$OrderCopyWithImpl<$Res, $Val extends Order>
           ? _value.dueDate
           : dueDate // ignore: cast_nullable_to_non_nullable
               as DateTime,
+      itemsSubtotal: null == itemsSubtotal
+          ? _value.itemsSubtotal
+          : itemsSubtotal // ignore: cast_nullable_to_non_nullable
+              as double,
+      addonsTotal: null == addonsTotal
+          ? _value.addonsTotal
+          : addonsTotal // ignore: cast_nullable_to_non_nullable
+              as double,
       subtotal: null == subtotal
           ? _value.subtotal
           : subtotal // ignore: cast_nullable_to_non_nullable
@@ -162,6 +187,10 @@ class _$OrderCopyWithImpl<$Res, $Val extends Order>
           ? _value.discountAmount
           : discountAmount // ignore: cast_nullable_to_non_nullable
               as double,
+      discountIncludesAddons: null == discountIncludesAddons
+          ? _value.discountIncludesAddons
+          : discountIncludesAddons // ignore: cast_nullable_to_non_nullable
+              as bool,
       totalAmount: null == totalAmount
           ? _value.totalAmount
           : totalAmount // ignore: cast_nullable_to_non_nullable
@@ -182,6 +211,10 @@ class _$OrderCopyWithImpl<$Res, $Val extends Order>
           ? _value.items
           : items // ignore: cast_nullable_to_non_nullable
               as List<OrderItem>,
+      addons: null == addons
+          ? _value.addons
+          : addons // ignore: cast_nullable_to_non_nullable
+              as List<OrderAddon>,
       media: null == media
           ? _value.media
           : media // ignore: cast_nullable_to_non_nullable
@@ -208,6 +241,10 @@ abstract class _$$OrderImplCopyWith<$Res> implements $OrderCopyWith<$Res> {
       String status,
       String priority,
       @JsonKey(name: 'due_date') DateTime dueDate,
+      @JsonKey(name: 'items_subtotal', fromJson: decimalStringToDouble)
+      double itemsSubtotal,
+      @JsonKey(name: 'addons_total', fromJson: decimalStringToDouble)
+      double addonsTotal,
       @JsonKey(name: 'subtotal', fromJson: decimalStringToDouble)
       double subtotal,
       @JsonKey(name: 'discount_type') String discountType,
@@ -215,6 +252,7 @@ abstract class _$$OrderImplCopyWith<$Res> implements $OrderCopyWith<$Res> {
       double discountValue,
       @JsonKey(name: 'discount_amount', fromJson: decimalStringToDouble)
       double discountAmount,
+      @JsonKey(name: 'discount_includes_addons') bool discountIncludesAddons,
       @JsonKey(name: 'total_amount', fromJson: decimalStringToDouble)
       double totalAmount,
       @JsonKey(name: 'amount_paid', fromJson: decimalStringToDouble)
@@ -222,6 +260,7 @@ abstract class _$$OrderImplCopyWith<$Res> implements $OrderCopyWith<$Res> {
       @JsonKey(name: 'payment_status') String paymentStatus,
       String? notes,
       List<OrderItem> items,
+      List<OrderAddon> addons,
       List<OrderMedia> media,
       @JsonKey(name: 'created_at') DateTime createdAt});
 }
@@ -245,15 +284,19 @@ class __$$OrderImplCopyWithImpl<$Res>
     Object? status = null,
     Object? priority = null,
     Object? dueDate = null,
+    Object? itemsSubtotal = null,
+    Object? addonsTotal = null,
     Object? subtotal = null,
     Object? discountType = null,
     Object? discountValue = null,
     Object? discountAmount = null,
+    Object? discountIncludesAddons = null,
     Object? totalAmount = null,
     Object? amountPaid = null,
     Object? paymentStatus = null,
     Object? notes = freezed,
     Object? items = null,
+    Object? addons = null,
     Object? media = null,
     Object? createdAt = null,
   }) {
@@ -282,6 +325,14 @@ class __$$OrderImplCopyWithImpl<$Res>
           ? _value.dueDate
           : dueDate // ignore: cast_nullable_to_non_nullable
               as DateTime,
+      itemsSubtotal: null == itemsSubtotal
+          ? _value.itemsSubtotal
+          : itemsSubtotal // ignore: cast_nullable_to_non_nullable
+              as double,
+      addonsTotal: null == addonsTotal
+          ? _value.addonsTotal
+          : addonsTotal // ignore: cast_nullable_to_non_nullable
+              as double,
       subtotal: null == subtotal
           ? _value.subtotal
           : subtotal // ignore: cast_nullable_to_non_nullable
@@ -298,6 +349,10 @@ class __$$OrderImplCopyWithImpl<$Res>
           ? _value.discountAmount
           : discountAmount // ignore: cast_nullable_to_non_nullable
               as double,
+      discountIncludesAddons: null == discountIncludesAddons
+          ? _value.discountIncludesAddons
+          : discountIncludesAddons // ignore: cast_nullable_to_non_nullable
+              as bool,
       totalAmount: null == totalAmount
           ? _value.totalAmount
           : totalAmount // ignore: cast_nullable_to_non_nullable
@@ -318,6 +373,10 @@ class __$$OrderImplCopyWithImpl<$Res>
           ? _value._items
           : items // ignore: cast_nullable_to_non_nullable
               as List<OrderItem>,
+      addons: null == addons
+          ? _value._addons
+          : addons // ignore: cast_nullable_to_non_nullable
+              as List<OrderAddon>,
       media: null == media
           ? _value._media
           : media // ignore: cast_nullable_to_non_nullable
@@ -340,6 +399,10 @@ class _$OrderImpl extends _Order {
       required this.status,
       this.priority = 'normal',
       @JsonKey(name: 'due_date') required this.dueDate,
+      @JsonKey(name: 'items_subtotal', fromJson: decimalStringToDouble)
+      this.itemsSubtotal = 0,
+      @JsonKey(name: 'addons_total', fromJson: decimalStringToDouble)
+      this.addonsTotal = 0,
       @JsonKey(name: 'subtotal', fromJson: decimalStringToDouble)
       this.subtotal = 0,
       @JsonKey(name: 'discount_type') this.discountType = 'none',
@@ -347,6 +410,8 @@ class _$OrderImpl extends _Order {
       this.discountValue = 0,
       @JsonKey(name: 'discount_amount', fromJson: decimalStringToDouble)
       this.discountAmount = 0,
+      @JsonKey(name: 'discount_includes_addons')
+      this.discountIncludesAddons = true,
       @JsonKey(name: 'total_amount', fromJson: decimalStringToDouble)
       required this.totalAmount,
       @JsonKey(name: 'amount_paid', fromJson: decimalStringToDouble)
@@ -354,9 +419,11 @@ class _$OrderImpl extends _Order {
       @JsonKey(name: 'payment_status') required this.paymentStatus,
       this.notes,
       final List<OrderItem> items = const <OrderItem>[],
+      final List<OrderAddon> addons = const <OrderAddon>[],
       final List<OrderMedia> media = const <OrderMedia>[],
       @JsonKey(name: 'created_at') required this.createdAt})
       : _items = items,
+        _addons = addons,
         _media = media,
         super._();
 
@@ -380,6 +447,12 @@ class _$OrderImpl extends _Order {
   @JsonKey(name: 'due_date')
   final DateTime dueDate;
   @override
+  @JsonKey(name: 'items_subtotal', fromJson: decimalStringToDouble)
+  final double itemsSubtotal;
+  @override
+  @JsonKey(name: 'addons_total', fromJson: decimalStringToDouble)
+  final double addonsTotal;
+  @override
   @JsonKey(name: 'subtotal', fromJson: decimalStringToDouble)
   final double subtotal;
   @override
@@ -391,6 +464,9 @@ class _$OrderImpl extends _Order {
   @override
   @JsonKey(name: 'discount_amount', fromJson: decimalStringToDouble)
   final double discountAmount;
+  @override
+  @JsonKey(name: 'discount_includes_addons')
+  final bool discountIncludesAddons;
   @override
   @JsonKey(name: 'total_amount', fromJson: decimalStringToDouble)
   final double totalAmount;
@@ -411,6 +487,15 @@ class _$OrderImpl extends _Order {
     return EqualUnmodifiableListView(_items);
   }
 
+  final List<OrderAddon> _addons;
+  @override
+  @JsonKey()
+  List<OrderAddon> get addons {
+    if (_addons is EqualUnmodifiableListView) return _addons;
+    // ignore: implicit_dynamic_type
+    return EqualUnmodifiableListView(_addons);
+  }
+
   final List<OrderMedia> _media;
   @override
   @JsonKey()
@@ -426,7 +511,7 @@ class _$OrderImpl extends _Order {
 
   @override
   String toString() {
-    return 'Order(id: $id, clientId: $clientId, orderNumber: $orderNumber, status: $status, priority: $priority, dueDate: $dueDate, subtotal: $subtotal, discountType: $discountType, discountValue: $discountValue, discountAmount: $discountAmount, totalAmount: $totalAmount, amountPaid: $amountPaid, paymentStatus: $paymentStatus, notes: $notes, items: $items, media: $media, createdAt: $createdAt)';
+    return 'Order(id: $id, clientId: $clientId, orderNumber: $orderNumber, status: $status, priority: $priority, dueDate: $dueDate, itemsSubtotal: $itemsSubtotal, addonsTotal: $addonsTotal, subtotal: $subtotal, discountType: $discountType, discountValue: $discountValue, discountAmount: $discountAmount, discountIncludesAddons: $discountIncludesAddons, totalAmount: $totalAmount, amountPaid: $amountPaid, paymentStatus: $paymentStatus, notes: $notes, items: $items, addons: $addons, media: $media, createdAt: $createdAt)';
   }
 
   @override
@@ -443,6 +528,10 @@ class _$OrderImpl extends _Order {
             (identical(other.priority, priority) ||
                 other.priority == priority) &&
             (identical(other.dueDate, dueDate) || other.dueDate == dueDate) &&
+            (identical(other.itemsSubtotal, itemsSubtotal) ||
+                other.itemsSubtotal == itemsSubtotal) &&
+            (identical(other.addonsTotal, addonsTotal) ||
+                other.addonsTotal == addonsTotal) &&
             (identical(other.subtotal, subtotal) ||
                 other.subtotal == subtotal) &&
             (identical(other.discountType, discountType) ||
@@ -451,6 +540,8 @@ class _$OrderImpl extends _Order {
                 other.discountValue == discountValue) &&
             (identical(other.discountAmount, discountAmount) ||
                 other.discountAmount == discountAmount) &&
+            (identical(other.discountIncludesAddons, discountIncludesAddons) ||
+                other.discountIncludesAddons == discountIncludesAddons) &&
             (identical(other.totalAmount, totalAmount) ||
                 other.totalAmount == totalAmount) &&
             (identical(other.amountPaid, amountPaid) ||
@@ -459,6 +550,7 @@ class _$OrderImpl extends _Order {
                 other.paymentStatus == paymentStatus) &&
             (identical(other.notes, notes) || other.notes == notes) &&
             const DeepCollectionEquality().equals(other._items, _items) &&
+            const DeepCollectionEquality().equals(other._addons, _addons) &&
             const DeepCollectionEquality().equals(other._media, _media) &&
             (identical(other.createdAt, createdAt) ||
                 other.createdAt == createdAt));
@@ -466,25 +558,30 @@ class _$OrderImpl extends _Order {
 
   @JsonKey(includeFromJson: false, includeToJson: false)
   @override
-  int get hashCode => Object.hash(
-      runtimeType,
-      id,
-      clientId,
-      orderNumber,
-      status,
-      priority,
-      dueDate,
-      subtotal,
-      discountType,
-      discountValue,
-      discountAmount,
-      totalAmount,
-      amountPaid,
-      paymentStatus,
-      notes,
-      const DeepCollectionEquality().hash(_items),
-      const DeepCollectionEquality().hash(_media),
-      createdAt);
+  int get hashCode => Object.hashAll([
+        runtimeType,
+        id,
+        clientId,
+        orderNumber,
+        status,
+        priority,
+        dueDate,
+        itemsSubtotal,
+        addonsTotal,
+        subtotal,
+        discountType,
+        discountValue,
+        discountAmount,
+        discountIncludesAddons,
+        totalAmount,
+        amountPaid,
+        paymentStatus,
+        notes,
+        const DeepCollectionEquality().hash(_items),
+        const DeepCollectionEquality().hash(_addons),
+        const DeepCollectionEquality().hash(_media),
+        createdAt
+      ]);
 
   /// Create a copy of Order
   /// with the given fields replaced by the non-null parameter values.
@@ -510,6 +607,10 @@ abstract class _Order extends Order {
           required final String status,
           final String priority,
           @JsonKey(name: 'due_date') required final DateTime dueDate,
+          @JsonKey(name: 'items_subtotal', fromJson: decimalStringToDouble)
+          final double itemsSubtotal,
+          @JsonKey(name: 'addons_total', fromJson: decimalStringToDouble)
+          final double addonsTotal,
           @JsonKey(name: 'subtotal', fromJson: decimalStringToDouble)
           final double subtotal,
           @JsonKey(name: 'discount_type') final String discountType,
@@ -517,6 +618,8 @@ abstract class _Order extends Order {
           final double discountValue,
           @JsonKey(name: 'discount_amount', fromJson: decimalStringToDouble)
           final double discountAmount,
+          @JsonKey(name: 'discount_includes_addons')
+          final bool discountIncludesAddons,
           @JsonKey(name: 'total_amount', fromJson: decimalStringToDouble)
           required final double totalAmount,
           @JsonKey(name: 'amount_paid', fromJson: decimalStringToDouble)
@@ -524,6 +627,7 @@ abstract class _Order extends Order {
           @JsonKey(name: 'payment_status') required final String paymentStatus,
           final String? notes,
           final List<OrderItem> items,
+          final List<OrderAddon> addons,
           final List<OrderMedia> media,
           @JsonKey(name: 'created_at') required final DateTime createdAt}) =
       _$OrderImpl;
@@ -547,6 +651,12 @@ abstract class _Order extends Order {
   @JsonKey(name: 'due_date')
   DateTime get dueDate;
   @override
+  @JsonKey(name: 'items_subtotal', fromJson: decimalStringToDouble)
+  double get itemsSubtotal;
+  @override
+  @JsonKey(name: 'addons_total', fromJson: decimalStringToDouble)
+  double get addonsTotal;
+  @override
   @JsonKey(name: 'subtotal', fromJson: decimalStringToDouble)
   double get subtotal;
   @override
@@ -558,6 +668,9 @@ abstract class _Order extends Order {
   @override
   @JsonKey(name: 'discount_amount', fromJson: decimalStringToDouble)
   double get discountAmount;
+  @override
+  @JsonKey(name: 'discount_includes_addons')
+  bool get discountIncludesAddons;
   @override
   @JsonKey(name: 'total_amount', fromJson: decimalStringToDouble)
   double get totalAmount;
@@ -571,6 +684,8 @@ abstract class _Order extends Order {
   String? get notes;
   @override
   List<OrderItem> get items;
+  @override
+  List<OrderAddon> get addons;
   @override
   List<OrderMedia> get media;
   @override

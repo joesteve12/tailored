@@ -132,6 +132,7 @@ class OrderRepository {
     String? priority,
     String? discountType,
     double? discountValue,
+    bool? discountIncludesAddons,
   }) async {
     final data = <String, dynamic>{
       if (dueDate != null) 'due_date': _dateOnly(dueDate),
@@ -139,6 +140,12 @@ class OrderRepository {
       if (priority != null) 'priority': priority,
       if (discountType != null) 'discount_type': discountType,
       if (discountValue != null) 'discount_value': discountValue,
+      // Flipping this alone changes the total, with no discount field
+      // touched: it moves the discount base between items+addons and items
+      // alone. The backend treats it as a discount change for recalculation
+      // purposes precisely so this can be sent on its own.
+      if (discountIncludesAddons != null)
+        'discount_includes_addons': discountIncludesAddons,
     };
     final response = await _dio.put('/orders/$id', data: data);
     return Order.fromJson(response.data as Map<String, dynamic>);
@@ -249,6 +256,71 @@ class OrderRepository {
   /// DELETE /orders/{id}/media/{mediaId} — 204.
   Future<void> deleteMedia(String orderId, String mediaId) async {
     await _dio.delete('/orders/$orderId/media/$mediaId');
+  }
+
+  // ── Order addons: chargeable extras, not production work ─────────────────
+  /// All three return the **full updated Order** (totals recomputed
+  /// server-side), matching the item-CRUD convention — an addon moves
+  /// `subtotal`, `discountAmount` and `totalAmount`, so returning the addon
+  /// alone would force a second fetch just to redraw the money card.
+  ///
+  /// None of these advance the order's status. Adding a garment puts an order
+  /// back into production because a garment is work; adding a delivery fee is
+  /// not, and quietly demoting a `ready` order because someone charged for
+  /// postage would be a bug the shop has to undo by hand.
+  ///
+  /// All three 400 on a delivered or cancelled order (the backend's locked
+  /// statuses), so callers should gate on `order.isLocked` client-side rather
+  /// than only learning it from a rejected request.
+
+  /// POST /orders/{id}/addons — `amount` must be > 0.
+  Future<Order> addAddon(
+    String orderId, {
+    required String label,
+    required double amount,
+    int quantity = 1,
+    String? notes,
+  }) async {
+    final response = await _dio.post('/orders/$orderId/addons', data: {
+      'label': label,
+      'amount': amount,
+      'quantity': quantity,
+      if (notes != null && notes.isNotEmpty) 'notes': notes,
+    });
+    return Order.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  /// PATCH /orders/{id}/addons/{addonId} — partial: only non-null fields are
+  /// sent, and anything omitted is left as it was.
+  Future<Order> updateAddon(
+    String orderId,
+    String addonId, {
+    String? label,
+    double? amount,
+    int? quantity,
+    String? notes,
+  }) async {
+    final response = await _dio.patch(
+      '/orders/$orderId/addons/$addonId',
+      data: <String, dynamic>{
+        if (label != null) 'label': label,
+        if (amount != null) 'amount': amount,
+        if (quantity != null) 'quantity': quantity,
+        if (notes != null) 'notes': notes,
+      },
+    );
+    return Order.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  /// DELETE /orders/{id}/addons/{addonId}.
+  ///
+  /// Unlike items there's no "must keep at least one" floor — an order with
+  /// no addons is the normal case. If the order was already paid in full,
+  /// removing an addon drops the total below what was paid and the order
+  /// comes back as `overpaid`. That's the intended outcome, not an error.
+  Future<Order> deleteAddon(String orderId, String addonId) async {
+    final response = await _dio.delete('/orders/$orderId/addons/$addonId');
+    return Order.fromJson(response.data as Map<String, dynamic>);
   }
 
   // ── Fabrics on an item (a garment can be cut from several) ───────────────

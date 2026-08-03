@@ -13,6 +13,12 @@ _$OrderImpl _$$OrderImplFromJson(Map<String, dynamic> json) => _$OrderImpl(
       status: json['status'] as String,
       priority: json['priority'] as String? ?? 'normal',
       dueDate: DateTime.parse(json['due_date'] as String),
+      itemsSubtotal: json['items_subtotal'] == null
+          ? 0
+          : decimalStringToDouble(json['items_subtotal']),
+      addonsTotal: json['addons_total'] == null
+          ? 0
+          : decimalStringToDouble(json['addons_total']),
       subtotal: json['subtotal'] == null
           ? 0
           : decimalStringToDouble(json['subtotal']),
@@ -23,6 +29,7 @@ _$OrderImpl _$$OrderImplFromJson(Map<String, dynamic> json) => _$OrderImpl(
       discountAmount: json['discount_amount'] == null
           ? 0
           : decimalStringToDouble(json['discount_amount']),
+      discountIncludesAddons: json['discount_includes_addons'] as bool? ?? true,
       totalAmount: decimalStringToDouble(json['total_amount']),
       amountPaid: decimalStringToDouble(json['amount_paid']),
       paymentStatus: json['payment_status'] as String,
@@ -31,6 +38,10 @@ _$OrderImpl _$$OrderImplFromJson(Map<String, dynamic> json) => _$OrderImpl(
               ?.map((e) => OrderItem.fromJson(e as Map<String, dynamic>))
               .toList() ??
           const <OrderItem>[],
+      addons: (json['addons'] as List<dynamic>?)
+              ?.map((e) => OrderAddon.fromJson(e as Map<String, dynamic>))
+              .toList() ??
+          const <OrderAddon>[],
       media: (json['media'] as List<dynamic>?)
               ?.map((e) => OrderMedia.fromJson(e as Map<String, dynamic>))
               .toList() ??
@@ -46,15 +57,19 @@ Map<String, dynamic> _$$OrderImplToJson(_$OrderImpl instance) =>
       'status': instance.status,
       'priority': instance.priority,
       'due_date': instance.dueDate.toIso8601String(),
+      'items_subtotal': instance.itemsSubtotal,
+      'addons_total': instance.addonsTotal,
       'subtotal': instance.subtotal,
       'discount_type': instance.discountType,
       'discount_value': instance.discountValue,
       'discount_amount': instance.discountAmount,
+      'discount_includes_addons': instance.discountIncludesAddons,
       'total_amount': instance.totalAmount,
       'amount_paid': instance.amountPaid,
       'payment_status': instance.paymentStatus,
       'notes': instance.notes,
       'items': instance.items,
+      'addons': instance.addons,
       'media': instance.media,
       'created_at': instance.createdAt.toIso8601String(),
     };

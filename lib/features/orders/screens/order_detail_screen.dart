@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/models/recipient_ref.dart';
 import '../../../core/utils/fabric_labels.dart';
+import '../../../core/utils/money.dart';
 import '../../../core/utils/order_labels.dart';
 import '../../../core/widgets/async_error_view.dart';
 import '../../documents/widgets/order_document_actions.dart';
@@ -16,6 +17,7 @@ import '../state/order_detail_notifier.dart';
 import '../state/order_list_notifier.dart';
 import '../widgets/order_activity_section.dart';
 import '../widgets/order_client_tile.dart';
+import '../widgets/order_addons_section.dart';
 import '../widgets/order_item_edit_sheet.dart';
 import '../widgets/order_item_form_sheet.dart';
 import '../widgets/order_media_section.dart';
@@ -23,6 +25,7 @@ import '../widgets/measurement_snapshot_section.dart';
 
 import '../../../core/widgets/feedback.dart';
 import '../../../core/widgets/image_viewer.dart';
+
 /// The order's home screen, brought to parity with the restructured backend.
 /// Beyond the old due-date/notes/payment view it now drives: the order-level
 /// status flow (only the transitions the backend accepts are offered),
@@ -46,12 +49,26 @@ class OrderDetailScreen extends ConsumerStatefulWidget {
   ConsumerState<OrderDetailScreen> createState() => _OrderDetailScreenState();
 }
 
-class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
+class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen>
+    with SingleTickerProviderStateMixin {
   bool _isDeleting = false;
   bool _busy = false;
 
+  // Overview / Outfits / Activity / Media, instead of one long scroll.
+  // Priority, due date, the client link, and the status chip (tap it to
+  // change status) live in a fixed block above the tabs so they stay
+  // visible no matter which tab is open.
+  late final TabController _tabController =
+      TabController(length: 4, vsync: this);
+
   OrderDetailNotifier get _notifier =>
       ref.read(orderDetailProvider(widget.orderId).notifier);
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
 
   /// Keep the orders list in sync after anything that changes a list-visible
   /// field (status, totals, priority, due date). Best-effort — a stale list
@@ -143,6 +160,7 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
     final input = await showModalBottomSheet<OrderItemInput>(
       context: context,
       isScrollControlled: true,
+      useRootNavigator: true,
       builder: (context) => OrderItemFormSheet(clientId: order.clientId),
     );
     if (input == null || !mounted) return;
@@ -163,6 +181,7 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
   Future<void> _editItem(Order order, OrderItem item) async {
     await showModalBottomSheet<void>(
       context: context,
+      useRootNavigator: true,
       isScrollControlled: true,
       builder: (context) => OrderItemEditSheet(
         orderId: widget.orderId,
@@ -190,6 +209,7 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
         priority: result.priority,
         discountType: result.discountType,
         discountValue: result.discountValue,
+        discountIncludesAddons: result.discountIncludesAddons,
       );
       _refreshList();
     } catch (e) {
@@ -249,7 +269,7 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Order'),
+        title: const Text(''),
         actions: [
           if (currentOrder != null && !locked)
             IconButton(
@@ -278,74 +298,73 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
           error: err,
           onRetry: () => _notifier.refresh(),
         ),
-        data: (order) => RefreshIndicator(
-          onRefresh: () => _notifier.refresh(),
-          child: ListView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.all(16),
+        data: (order) => NestedScrollView(
+          headerSliverBuilder: (context, innerBoxIsScrolled) => [
+            // The order header (locked banner, order number, status chip,
+            // client tile, priority/due date) now scrolls away with the
+            // rest of the page — only the TabBar below it stays pinned.
+            // SliverOverlapAbsorber/Injector is boilerplate NestedScrollView
+            // requires to keep the pinned header's height from double-
+            // counting against each tab's own scroll offset.
+            SliverOverlapAbsorber(
+              handle: NestedScrollView.sliverOverlapAbsorberHandleFor(context),
+              sliver: SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (order.isLocked) ...[
+                        _LockedBanner(status: order.status),
+                        const SizedBox(height: 12),
+                      ],
+                      _Header(
+                        order: order,
+                        busy: _busy,
+                        onAdvance: _advanceStatus,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            SliverPersistentHeader(
+              pinned: true,
+              delegate: _PinnedTabBarDelegate(
+                TabBar(
+                  controller: _tabController,
+                  tabs: const [
+                    Tab(text: 'Overview'),
+                    Tab(text: 'Outfits'),
+                    Tab(text: 'Activity'),
+                    Tab(text: 'Media'),
+                  ],
+                ),
+              ),
+            ),
+          ],
+          body: TabBarView(
+            controller: _tabController,
             children: [
-              _Header(order: order),
-              const SizedBox(height: 16),
-              // Whose order this is, and the way through to them. Sits right
-              // under the header because "who is this for" is the second
-              // thing you want to know after "which order is this".
-              Text('Belongs to',
-                  style: Theme.of(context).textTheme.titleSmall),
-              const SizedBox(height: 8),
-              OrderClientTile(clientId: order.clientId),
-              const SizedBox(height: 16),
-              _StatusBar(
+              _OverviewTab(
+                order: order,
+                onRefresh: () => _notifier.refresh(),
+              ),
+              _OutfitsTab(
                 order: order,
                 busy: _busy,
-                onAdvance: _advanceStatus,
+                onRefresh: () => _notifier.refresh(),
+                onAddItem: () => _addItem(order),
+                onEditItem: (item) => _editItem(order, item),
               ),
-              if (order.notes != null && order.notes!.isNotEmpty) ...[
-                const SizedBox(height: 12),
-                Text(order.notes!),
-              ],
-              const SizedBox(height: 20),
-              PaymentSection(order: order),
-              const SizedBox(height: 20),
-              // Payment history and status history both live here now. The
-              // PaymentSection above keeps only the money summary and the
-              // "record payment" action — the history it used to render
-              // inline would otherwise be duplicated in the Payments tab.
-              OrderActivitySection(order: order),
-              const SizedBox(height: 12),
-              OrderDocumentActions(order: order),
-              const SizedBox(height: 20),
-              OrderMediaSection(
-                orderId: order.id,
-                media: order.media,
-                canAdd: order.canAddMedia,
-                enabled: !order.isLocked,
+              _ActivityTab(
+                order: order,
+                onRefresh: () => _notifier.refresh(),
               ),
-              const SizedBox(height: 20),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text('Outfits',
-                      style: Theme.of(context).textTheme.titleSmall),
-                  if (!order.isLocked)
-                    TextButton.icon(
-                      onPressed: _busy ? null : () => _addItem(order),
-                      icon: const Icon(Icons.add),
-                      label: const Text('Add outfit'),
-                    ),
-                ],
+              _MediaTab(
+                order: order,
+                onRefresh: () => _notifier.refresh(),
               ),
-              const SizedBox(height: 8),
-              if (order.items.isEmpty)
-                const Text('No outfits on this order')
-              else
-                for (final item in order.items)
-                  _OrderItemCard(
-                    orderId: order.id,
-                    item: item,
-                    onTap: order.isLocked
-                        ? null
-                        : () => _editItem(order, item),
-                  ),
             ],
           ),
         ),
@@ -354,53 +373,231 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
   }
 }
 
-class _Header extends StatelessWidget {
-  const _Header({required this.order});
+/// Shown only when [order.isLocked]. Edit affordances quietly disappearing
+/// elsewhere on this screen used to be the only signal that the order was
+/// closed — this makes the reason explicit instead of leaving people to
+/// infer it from a missing pencil icon.
+/// Standard NestedScrollView boilerplate: wraps the TabBar so it can sit in
+/// a SliverPersistentHeader and stay pinned while the header above it (order
+/// number, status, client, priority/due date) scrolls away normally.
+class _PinnedTabBarDelegate extends SliverPersistentHeaderDelegate {
+  const _PinnedTabBarDelegate(this.tabBar);
 
-  final Order order;
+  final TabBar tabBar;
+
+  @override
+  double get minExtent => tabBar.preferredSize.height;
+
+  @override
+  double get maxExtent => tabBar.preferredSize.height;
+
+  @override
+  Widget build(
+      BuildContext context, double shrinkOffset, bool overlapsContent) {
+    return Material(
+      color: Theme.of(context).scaffoldBackgroundColor,
+      child: tabBar,
+    );
+  }
+
+  @override
+  bool shouldRebuild(covariant _PinnedTabBarDelegate oldDelegate) =>
+      tabBar != oldDelegate.tabBar;
+}
+
+/// Shared scroll body for each tab's content: a SliverOverlapInjector (the
+/// other half of the SliverOverlapAbsorber wrapping the header above) plus
+/// the tab's own content as a sliver list — this is what lets each tab
+/// scroll independently while NestedScrollView keeps the pinned TabBar's
+/// height correctly accounted for.
+class _TabScrollView extends StatelessWidget {
+  const _TabScrollView({required this.onRefresh, required this.children});
+
+  final Future<void> Function() onRefresh;
+  final List<Widget> children;
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return RefreshIndicator(
+      onRefresh: onRefresh,
+      child: CustomScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        slivers: [
+          SliverOverlapInjector(
+            handle: NestedScrollView.sliverOverlapAbsorberHandleFor(context),
+          ),
+          SliverPadding(
+            padding: const EdgeInsets.all(16),
+            sliver: SliverList(delegate: SliverChildListDelegate(children)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LockedBanner extends StatelessWidget {
+  const _LockedBanner({required this.status});
+
+  final String status;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.lock_outline, size: 16, color: scheme.outline),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'This order is ${orderStatusLabel(status).toLowerCase()} and '
+              'closed to further edits.',
+              style: Theme.of(context)
+                  .textTheme
+                  .bodySmall
+                  ?.copyWith(color: scheme.outline),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Client, notes, add-ons, and the money breakdown / payment action. This is
+/// "everything about the deal" as opposed to "everything about the
+/// garments" (Outfits tab) or "everything that happened" (Activity tab).
+class _OverviewTab extends StatelessWidget {
+  const _OverviewTab({required this.order, required this.onRefresh});
+
+  final Order order;
+  final Future<void> Function() onRefresh;
+
+  @override
+  Widget build(BuildContext context) {
+    return _TabScrollView(
+      onRefresh: onRefresh,
       children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Expanded(
-              child: Text(order.orderNumber,
-                  style: Theme.of(context).textTheme.headlineSmall),
+        if (order.notes != null && order.notes!.isNotEmpty) ...[
+          Text('Notes', style: Theme.of(context).textTheme.titleSmall),
+          const SizedBox(height: 8),
+          Text(order.notes!),
+          const SizedBox(height: 20),
+        ],
+        // Extra charges sit right above the money card: they're the
+        // other half of what the total is made of, and reading them
+        // straight before the total is what makes the Garments/Extras
+        // split legible.
+        OrderAddonsSection(order: order),
+        const SizedBox(height: 12),
+        PaymentSection(order: order),
+      ],
+    );
+  }
+}
+
+/// Status history and document actions — "everything that happened on this
+/// order," as distinct from its current state (fixed header) or its
+/// contents (Outfits tab).
+class _ActivityTab extends StatelessWidget {
+  const _ActivityTab({required this.order, required this.onRefresh});
+
+  final Order order;
+  final Future<void> Function() onRefresh;
+
+  @override
+  Widget build(BuildContext context) {
+    return _TabScrollView(
+      onRefresh: onRefresh,
+      children: [
+        OrderActivitySection(order: order),
+        const SizedBox(height: 12),
+        OrderDocumentActions(order: order),
+      ],
+    );
+  }
+}
+
+/// The garment list, promoted out from the bottom of a long scroll to its
+/// own tab. This is the substance of the order — it shouldn't take six
+/// section-scrolls to reach.
+class _OutfitsTab extends StatelessWidget {
+  const _OutfitsTab({
+    required this.order,
+    required this.busy,
+    required this.onRefresh,
+    required this.onAddItem,
+    required this.onEditItem,
+  });
+
+  final Order order;
+  final bool busy;
+  final Future<void> Function() onRefresh;
+  final VoidCallback onAddItem;
+  final ValueChanged<OrderItem> onEditItem;
+
+  @override
+  Widget build(BuildContext context) {
+    return _TabScrollView(
+      onRefresh: onRefresh,
+      children: [
+        if (!order.isLocked)
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              onPressed: busy ? null : onAddItem,
+              icon: const Icon(Icons.add),
+              label: const Text('Add outfit'),
             ),
-            Chip(
-              label: Text(orderStatusLabel(order.status)),
-              visualDensity: VisualDensity.compact,
+          ),
+        if (order.items.isEmpty)
+          const Padding(
+            padding: EdgeInsets.only(top: 24),
+            child: Center(child: Text('No outfits on this order')),
+          )
+        else
+          for (final item in order.items)
+            _OrderItemCard(
+              orderId: order.id,
+              item: item,
+              onTap: order.isLocked ? null : () => onEditItem(item),
             ),
-          ],
-        ),
-        const SizedBox(height: 4),
-        Row(
-          children: [
-            Icon(Icons.flag_outlined,
-                size: 16, color: Theme.of(context).colorScheme.outline),
-            const SizedBox(width: 4),
-            Text(priorityLabel(order.priority)),
-            const SizedBox(width: 16),
-            Icon(Icons.event_outlined,
-                size: 16, color: Theme.of(context).colorScheme.outline),
-            const SizedBox(width: 4),
-            Text('Due ${_fmtDate(order.dueDate)}'),
-          ],
+      ],
+    );
+  }
+}
+
+class _MediaTab extends StatelessWidget {
+  const _MediaTab({required this.order, required this.onRefresh});
+
+  final Order order;
+  final Future<void> Function() onRefresh;
+
+  @override
+  Widget build(BuildContext context) {
+    return _TabScrollView(
+      onRefresh: onRefresh,
+      children: [
+        OrderMediaSection(
+          orderId: order.id,
+          media: order.media,
+          canAdd: order.canAddMedia,
+          enabled: !order.isLocked,
         ),
       ],
     );
   }
 }
 
-/// The order-status control: a labelled current state plus a menu offering
-/// only the moves the backend's transition rules permit. Terminal states
-/// show a quiet "no further changes" note instead of an empty menu.
-class _StatusBar extends StatelessWidget {
-  const _StatusBar({
+class _Header extends StatelessWidget {
+  const _Header({
     required this.order,
     required this.busy,
     required this.onAdvance,
@@ -412,53 +609,179 @@ class _StatusBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final transitions = allowedOrderTransitions(order.status);
+    final isRush = _isElevatedPriority(order.priority);
+    final scheme = Theme.of(context).colorScheme;
+    final priorityColor =
+        isRush ? _priorityColor(order.priority, scheme) : scheme.outline;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Expanded(
+              child: Text(order.orderNumber,
+                  style: Theme.of(context).textTheme.headlineSmall),
+            ),
+            _StatusChip(
+              order: order,
+              busy: busy,
+              onAdvance: onAdvance,
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        // The client tile already carries its own name display and
+        // tap-through to the client detail screen — reused here directly
+        // rather than duplicating that link logic, since this file doesn't
+        // have visibility into how OrderClientTile resolves clientId to a
+        // name. This replaces the old separate "Belongs to" section in the
+        // Overview tab; the order-client relationship is always-visible
+        // header info now, not something you scroll to find.
+        OrderClientTile(clientId: order.clientId),
+        const SizedBox(height: 6),
+        Row(
+          children: [
+            Icon(
+              isRush ? Icons.flag : Icons.flag_outlined,
+              size: 16,
+              color: priorityColor,
+            ),
+            const SizedBox(width: 4),
+            Text(
+              priorityLabel(order.priority),
+              style: isRush
+                  ? TextStyle(
+                      color: priorityColor, fontWeight: FontWeight.w600)
+                  : null,
+            ),
+            const SizedBox(width: 16),
+            Icon(Icons.event_outlined, size: 16, color: scheme.outline),
+            const SizedBox(width: 4),
+            Text('Due ${_fmtDate(order.dueDate)}'),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+/// Priority enum is low / normal / high / urgent. Both of the top two get
+/// the elevated (filled flag) treatment — "high" isn't urgent, but it's not
+/// routine either, and a two-tier visual (routine vs elevated) reads more
+/// clearly at a glance than three tiers would.
+bool _isElevatedPriority(String priority) =>
+    priority == 'high' || priority == 'urgent';
+
+/// Matches the priority color scheme used in order_list_screen.dart and
+/// client_orders_section.dart, so a rush order reads the same color
+/// wherever it's shown.
+Color _priorityColor(String priority, ColorScheme scheme) {
+  switch (priority) {
+    case 'urgent':
+      return const Color(0xFFEA580C);
+    case 'high':
+      return scheme.error;
+    default:
+      return scheme.outline;
+  }
+}
+
+/// The status chip doubles as the status control: tapping it opens the same
+/// allowed-transition menu the old separate "Update status" button did.
+/// Color-coded by a best-effort read of common order-status strings
+/// (pending / in production / ready / delivered / cancelled) — this file
+/// doesn't have access to the real status enum, so unmatched values fall
+/// back to a neutral tone rather than guessing wrong. Confirm the actual
+/// status strings in order_labels.dart and adjust the switch below to
+/// match exactly.
+///
+/// When there are no allowed transitions (terminal state), the chip is
+/// static — no chevron, no tap handler — rather than opening an empty
+/// menu.
+class _StatusChip extends StatelessWidget {
+  const _StatusChip({
+    required this.order,
+    required this.busy,
+    required this.onAdvance,
+  });
+
+  final Order order;
+  final bool busy;
+  final ValueChanged<String> onAdvance;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final status = order.status;
+    final s = status.toLowerCase();
+
+    Color bg;
+    Color fg;
+    if (s.contains('cancel')) {
+      bg = scheme.errorContainer;
+      fg = scheme.onErrorContainer;
+    } else if (s.contains('deliver')) {
+      bg = scheme.surfaceContainerHighest;
+      fg = scheme.onSurfaceVariant;
+    } else if (s.contains('ready')) {
+      bg = scheme.tertiaryContainer;
+      fg = scheme.onTertiaryContainer;
+    } else if (s.contains('production') || s.contains('progress')) {
+      bg = scheme.primaryContainer;
+      fg = scheme.onPrimaryContainer;
+    } else {
+      // pending / anything unrecognized
+      bg = scheme.secondaryContainer;
+      fg = scheme.onSecondaryContainer;
+    }
+
+    final transitions = allowedOrderTransitions(status);
+    final label = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(orderStatusLabel(status)),
+        if (transitions.isNotEmpty) ...[
+          const SizedBox(width: 4),
+          if (busy)
+            SizedBox(
+              height: 12,
+              width: 12,
+              child: CircularProgressIndicator(strokeWidth: 2, color: fg),
+            )
+          else
+            Icon(Icons.expand_more, size: 16, color: fg),
+        ],
+      ],
+    );
 
     if (transitions.isEmpty) {
-      return Text(
-        'This order is ${orderStatusLabel(order.status).toLowerCase()} — '
-        'no further status changes.',
-        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: Theme.of(context).colorScheme.outline,
-            ),
+      return Chip(
+        label: label,
+        labelStyle: TextStyle(color: fg, fontWeight: FontWeight.w600),
+        backgroundColor: bg,
+        side: BorderSide.none,
+        visualDensity: VisualDensity.compact,
       );
     }
 
-    final scheme = Theme.of(context).colorScheme;
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: PopupMenuButton<String>(
-        enabled: !busy,
-        onSelected: onAdvance,
-        itemBuilder: (context) => [
-          for (final t in transitions)
-            PopupMenuItem(value: t, child: Text(orderStatusLabel(t))),
-        ],
-        // A plain styled container (not a nested button) so the menu's own
-        // gesture handling owns the tap cleanly.
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          decoration: BoxDecoration(
-            border: Border.all(color: scheme.outline),
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (busy)
-                const SizedBox(
-                  height: 16,
-                  width: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              else
-                Icon(Icons.swap_horiz, size: 18, color: scheme.primary),
-              const SizedBox(width: 8),
-              Text('Update status',
-                  style: TextStyle(color: scheme.primary)),
-            ],
-          ),
-        ),
+    return PopupMenuButton<String>(
+      enabled: !busy,
+      onSelected: onAdvance,
+      itemBuilder: (context) => [
+        for (final t in transitions)
+          PopupMenuItem(value: t, child: Text(orderStatusLabel(t))),
+      ],
+      // The chip itself is the button — no separate control elsewhere on
+      // screen. A plain Chip (not a nested button) so the menu's own
+      // gesture handling owns the tap cleanly.
+      child: Chip(
+        label: label,
+        labelStyle: TextStyle(color: fg, fontWeight: FontWeight.w600),
+        backgroundColor: bg,
+        side: BorderSide.none,
+        visualDensity: VisualDensity.compact,
       ),
     );
   }
@@ -483,108 +806,65 @@ class _OrderItemCard extends StatelessWidget {
   final OrderItem item;
   final VoidCallback? onTap;
 
+  // Fabric rows, the measurement snapshot, and style-ref thumbnails are all
+  // real detail people want, but not on every glance down the list — with
+  // 4-5 garments per order and 2+ fabrics each, rendering all of it inline
+  // always made this the longest part of the page. It's now collapsed
+  // behind "Details", off by default, so the list is scannable and the
+  // detail is one tap away instead of unavoidable scroll weight.
+  bool get _hasExpandableDetails =>
+      item.fabrics.isNotEmpty ||
+      item.measurementSetId != null ||
+      item.styleReferences.isNotEmpty;
+
   @override
   Widget build(BuildContext context) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
+    final summaryRow = InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (item.primaryFabricImageUrl != null &&
+                item.primaryFabricImageUrl!.isNotEmpty) ...[
+              GestureDetector(
+                onTap: () => showImageViewer(
+                  context,
+                  urls: [item.primaryFabricImageUrl!],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Image.network(
+                    item.primaryFabricImageUrl!,
+                    width: 52,
+                    height: 52,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => const SizedBox(
+                      width: 52,
+                      height: 52,
+                      child: Icon(Icons.broken_image_outlined),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+            ],
+            Expanded(
+              child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  if (item.primaryFabricImageUrl != null &&
-                      item.primaryFabricImageUrl!.isNotEmpty) ...[
-                    GestureDetector(
-                      onTap: () => showImageViewer(
-                        context,
-                        urls: [item.primaryFabricImageUrl!],
-                      ),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: Image.network(
-                          item.primaryFabricImageUrl!,
-                          width: 52,
-                          height: 52,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => const SizedBox(
-                            width: 52,
-                            height: 52,
-                            child: Icon(Icons.broken_image_outlined),
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                  ],
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(item.garmentType,
-                            style: Theme.of(context).textTheme.titleMedium),
-                        if (item.description != null &&
-                            item.description!.isNotEmpty)
-                          Text(item.description!),
-                        const SizedBox(height: 2),
-                        Text(
-                          'Qty ${item.quantity} · ${item.unitPrice.toStringAsFixed(2)} each · ${item.lineTotal.toStringAsFixed(2)}',
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
-                      ],
-                    ),
+                  Text(item.garmentType,
+                      style: Theme.of(context).textTheme.titleMedium),
+                  if (item.description != null && item.description!.isNotEmpty)
+                    Text(item.description!),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Qty ${item.quantity} · ${formatNaira(item.unitPrice)} each · ${formatNaira(item.lineTotal)}',
+                    style: Theme.of(context).textTheme.bodySmall,
                   ),
-                  _ProductionChip(orderId: orderId, item: item),
-                ],
-              ),
-              if (item.fabrics.isNotEmpty) ...[
-                const SizedBox(height: 6),
-                for (final f in item.fabrics)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 2),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Icon(Icons.texture_outlined,
-                            size: 14,
-                            color: Theme.of(context).colorScheme.outline),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: Text.rich(
-                            TextSpan(children: [
-                              TextSpan(
-                                text: f.serial,
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .bodySmall
-                                    ?.copyWith(fontWeight: FontWeight.w600),
-                              ),
-                              if (f.details != null && f.details!.isNotEmpty)
-                                TextSpan(text: ' · ${f.details}'),
-                              if (formatFabricQuantity(f.quantity, f.unit) !=
-                                  null)
-                                TextSpan(
-                                    text:
-                                        ' · ${formatFabricQuantity(f.quantity, f.unit)}'),
-                            ]),
-                            style: Theme.of(context).textTheme.bodySmall,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-              ],
-              const SizedBox(height: 6),
-              Wrap(
-                spacing: 12,
-                runSpacing: 4,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
+                  const SizedBox(height: 4),
                   _MetaChip(
                     icon: item.recipient.isGuest
                         ? Icons.person_outline
@@ -595,18 +875,92 @@ class _OrderItemCard extends StatelessWidget {
                   ),
                 ],
               ),
-              // The snapshot the garment is cut from, expandable in place —
-              // replaces the old dead "Cut from saved measurements" chip.
-              // Values and notes load on first expand, not with the card.
-              if (item.measurementSetId != null)
-                MeasurementSnapshotSection(setId: item.measurementSetId!),
-              if (item.styleReferences.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                _StyleRefThumbs(item: item),
-              ],
-            ],
-          ),
+            ),
+            const SizedBox(width: 8),
+            _ProductionChip(orderId: orderId, item: item),
+          ],
         ),
+      ),
+    );
+
+    if (!_hasExpandableDetails) {
+      return Card(margin: const EdgeInsets.only(bottom: 8), child: summaryRow);
+    }
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        children: [
+          summaryRow,
+          Theme(
+            // Strip the default divider lines an ExpansionTile draws above
+            // and below itself — they read as a stray rule inside the card.
+            data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+            child: ExpansionTile(
+              tilePadding: const EdgeInsets.symmetric(horizontal: 12),
+              childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+              title: Text('Details',
+                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                        color: Theme.of(context).colorScheme.outline,
+                      )),
+              children: [
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (item.fabrics.isNotEmpty)
+                      for (final f in item.fabrics)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 4),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Icon(Icons.texture_outlined,
+                                  size: 14,
+                                  color: Theme.of(context).colorScheme.outline),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text.rich(
+                                  TextSpan(children: [
+                                    TextSpan(
+                                      text: f.serial,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodySmall
+                                          ?.copyWith(
+                                              fontWeight: FontWeight.w600),
+                                    ),
+                                    if (f.details != null &&
+                                        f.details!.isNotEmpty)
+                                      TextSpan(text: ' · ${f.details}'),
+                                    if (formatFabricQuantity(
+                                            f.quantity, f.unit) !=
+                                        null)
+                                      TextSpan(
+                                          text:
+                                              ' · ${formatFabricQuantity(f.quantity, f.unit)}'),
+                                  ]),
+                                  style: Theme.of(context).textTheme.bodySmall,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                    // The snapshot the garment is cut from — replaces the
+                    // old dead "Cut from saved measurements" chip. Values
+                    // and notes load on first expand, not with the card.
+                    if (item.measurementSetId != null)
+                      MeasurementSnapshotSection(setId: item.measurementSetId!),
+                    if (item.styleReferences.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      _StyleRefThumbs(item: item),
+                    ],
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -664,10 +1018,8 @@ class _MetaChip extends StatelessWidget {
         Icon(icon, size: 15, color: color),
         const SizedBox(width: 4),
         Text(label,
-            style: Theme.of(context)
-                .textTheme
-                .bodySmall
-                ?.copyWith(color: color)),
+            style:
+                Theme.of(context).textTheme.bodySmall?.copyWith(color: color)),
       ],
     );
   }
@@ -737,6 +1089,7 @@ class _DetailsEdit {
     required this.priority,
     required this.discountType,
     required this.discountValue,
+    required this.discountIncludesAddons,
   });
 
   final DateTime dueDate;
@@ -744,6 +1097,11 @@ class _DetailsEdit {
   final String priority;
   final String discountType;
   final double discountValue;
+
+  /// Whether the discount computes on items+addons or items alone. Null when
+  /// the order has no addons — there's nothing for the choice to apply to, so
+  /// the dialog doesn't ask and the field isn't sent.
+  final bool? discountIncludesAddons;
 }
 
 /// Edit dialog expanded from the old due-date/notes pair to also carry
@@ -765,6 +1123,7 @@ class _EditDetailsDialogState extends State<_EditDetailsDialog> {
   late final TextEditingController _discountController;
   late String _priority;
   late String _discountType;
+  late bool _discountIncludesAddons;
 
   @override
   void initState() {
@@ -776,6 +1135,7 @@ class _EditDetailsDialogState extends State<_EditDetailsDialog> {
         TextEditingController(text: _trimZeros(o.discountValue));
     _priority = o.priority;
     _discountType = o.discountType;
+    _discountIncludesAddons = o.discountIncludesAddons;
   }
 
   @override
@@ -803,8 +1163,7 @@ class _EditDetailsDialogState extends State<_EditDetailsDialog> {
                 final picked = await showDatePicker(
                   context: context,
                   initialDate: _dueDate,
-                  firstDate:
-                      DateTime.now().subtract(const Duration(days: 365)),
+                  firstDate: DateTime.now().subtract(const Duration(days: 365)),
                   lastDate: DateTime.now().add(const Duration(days: 365 * 2)),
                 );
                 if (picked != null) setState(() => _dueDate = picked);
@@ -828,8 +1187,7 @@ class _EditDetailsDialogState extends State<_EditDetailsDialog> {
               decoration: const InputDecoration(labelText: 'Discount'),
               items: [
                 for (final t in kDiscountTypes)
-                  DropdownMenuItem(
-                      value: t, child: Text(discountTypeLabel(t))),
+                  DropdownMenuItem(value: t, child: Text(discountTypeLabel(t))),
               ],
               onChanged: (v) => setState(() {
                 _discountType = v ?? 'none';
@@ -848,6 +1206,45 @@ class _EditDetailsDialogState extends State<_EditDetailsDialog> {
                 keyboardType:
                     const TextInputType.numberWithOptions(decimal: true),
               ),
+              // Asked only when there are addons for the answer to apply to.
+              // On a plain order the choice is meaningless and the default
+              // (include) is sent silently — decision 3 in the spec, and the
+              // reason this prompt is here rather than on the create form,
+              // where an order has no addons yet and it could never fire.
+              if (widget.order.hasAddons) ...[
+                const SizedBox(height: 16),
+                Text(
+                  'Apply this discount to extra charges too?',
+                  style: Theme.of(context).textTheme.titleSmall,
+                ),
+                Text(
+                  'This order has ${formatNaira(widget.order.addonsTotal)} '
+                  'in extras.',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.outline,
+                      ),
+                ),
+                RadioListTile<bool>(
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  value: true,
+                  groupValue: _discountIncludesAddons,
+                  onChanged: (v) =>
+                      setState(() => _discountIncludesAddons = v!),
+                  title: Text('Yes — discount the full '
+                      '${formatNaira(widget.order.subtotal)}'),
+                ),
+                RadioListTile<bool>(
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  value: false,
+                  groupValue: _discountIncludesAddons,
+                  onChanged: (v) =>
+                      setState(() => _discountIncludesAddons = v!),
+                  title: Text('No — discount only the '
+                      '${formatNaira(widget.order.itemsSubtotal)} in garments'),
+                ),
+              ],
             ],
             const SizedBox(height: 12),
             TextField(
@@ -876,6 +1273,8 @@ class _EditDetailsDialogState extends State<_EditDetailsDialog> {
                 priority: _priority,
                 discountType: _discountType,
                 discountValue: value,
+                discountIncludesAddons:
+                    widget.order.hasAddons ? _discountIncludesAddons : null,
               ),
             );
           },

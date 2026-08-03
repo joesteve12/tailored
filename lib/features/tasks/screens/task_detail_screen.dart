@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import '../../../core/utils/money.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -451,7 +453,7 @@ class _ProductionHeader extends StatelessWidget {
                         style: TextStyle(color: scheme.onSurfaceVariant)),
                   if (task.quantity != null && task.unitPrice != null)
                     Text(
-                        '${task.quantity} × ${task.unitPrice!.toStringAsFixed(2)}',
+                        '${task.quantity} × ${formatNaira(task.unitPrice!)}',
                         style: TextStyle(
                             color: scheme.onSurfaceVariant, fontSize: 12)),
                 ],

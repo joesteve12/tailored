@@ -32,6 +32,7 @@ String describeError(Object error) {
         }
         return "Something went wrong (error $status).";
       case DioExceptionType.unknown:
+      case DioExceptionType.transformTimeout:
         return "Something went wrong. Try again.";
     }
   }

@@ -3,7 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/models/recipient_ref.dart';
 import '../../../core/utils/fabric_labels.dart';
+import '../../../core/utils/money.dart';
 import '../../../core/utils/pick_image.dart';
+import '../../../core/widgets/feedback.dart';
+import '../../../core/widgets/image_viewer.dart';
 import '../models/fabric.dart';
 import '../models/order.dart';
 import '../models/order_item.dart';
@@ -12,8 +15,6 @@ import '../state/order_detail_notifier.dart';
 import 'measurement_snapshot_picker.dart';
 import 'recipient_picker.dart';
 
-import '../../../core/widgets/feedback.dart';
-import '../../../core/widgets/image_viewer.dart';
 /// Edit sheet for an item that already exists on a saved order — the
 /// counterpart to [OrderItemFormSheet] (which builds a not-yet-created item).
 ///
@@ -47,8 +48,7 @@ class OrderItemEditSheet extends ConsumerStatefulWidget {
   final String clientId;
 
   @override
-  ConsumerState<OrderItemEditSheet> createState() =>
-      _OrderItemEditSheetState();
+  ConsumerState<OrderItemEditSheet> createState() => _OrderItemEditSheetState();
 }
 
 class _OrderItemEditSheetState extends ConsumerState<OrderItemEditSheet> {
@@ -64,6 +64,7 @@ class _OrderItemEditSheetState extends ConsumerState<OrderItemEditSheet> {
 
   bool _saving = false;
   bool _busyStyle = false;
+  bool _isClosing = false;
 
   @override
   void initState() {
@@ -72,8 +73,7 @@ class _OrderItemEditSheetState extends ConsumerState<OrderItemEditSheet> {
     _garmentController = TextEditingController(text: item.garmentType);
     _descriptionController =
         TextEditingController(text: item.description ?? '');
-    _quantityController =
-        TextEditingController(text: item.quantity.toString());
+    _quantityController = TextEditingController(text: item.quantity.toString());
     _priceController =
         TextEditingController(text: item.unitPrice.toStringAsFixed(2));
     _notesController = TextEditingController(text: item.notes ?? '');
@@ -93,6 +93,12 @@ class _OrderItemEditSheetState extends ConsumerState<OrderItemEditSheet> {
 
   OrderDetailNotifier get _notifier =>
       ref.read(orderDetailProvider(widget.orderId).notifier);
+
+  void _dismissSheet() {
+    if (!mounted || _isClosing) return;
+    _isClosing = true;
+    Navigator.of(context, rootNavigator: true).pop();
+  }
 
   /// Finds this item in the (possibly refetched) order. Null if it was deleted
   /// out from under the sheet.
@@ -126,7 +132,7 @@ class _OrderItemEditSheetState extends ConsumerState<OrderItemEditSheet> {
         // the explicit null when it actually changed to null.
         clearMeasurementSet: snapshotChanged && _measurementSetId == null,
       );
-      if (mounted) Navigator.pop(context);
+      if (mounted) _dismissSheet();
     } catch (e) {
       if (mounted) {
         setState(() => _saving = false);
@@ -164,7 +170,7 @@ class _OrderItemEditSheetState extends ConsumerState<OrderItemEditSheet> {
     }
   }
 
-  Future<void> _confirmDelete(bool isLastItem) async {
+  Future<void> _confirmDelete(bool isLastItem, Order? order) async {
     if (isLastItem) {
       showErrorMessage(
         context,
@@ -173,11 +179,43 @@ class _OrderItemEditSheetState extends ConsumerState<OrderItemEditSheet> {
       );
       return;
     }
+
+    // Warn about credit; never block on it, and never offer to refund here.
+    //
+    // Before the money rebuild this path could fail outright: the backend
+    // refused any change that pushed the total below what had been paid, and
+    // told the operator to void a payment first — destroying the record of
+    // money that genuinely changed hands so the arithmetic could stay inside
+    // a constraint. Removal now always succeeds and the order lands in
+    // `overpaid`.
+    //
+    // The projected total is computed here **for the warning copy only**. The
+    // backend recomputes and returns the settled figures; nothing downstream
+    // reads these numbers.
+    final item = widget.item;
+    final projectedTotal =
+        order == null ? null : order.totalAmount - item.lineTotal;
+    final createsCredit = order != null &&
+        projectedTotal != null &&
+        order.amountPaid > projectedTotal + 0.005;
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Remove outfit?'),
-        content: const Text('This outfit will be deleted from the order.'),
+        title: Text(createsCredit
+            ? 'Remove ${item.garmentType} '
+                '(${formatNaira(item.lineTotal)})?'
+            : 'Remove outfit?'),
+        content: createsCredit
+            ? Text(
+                "This order's total drops to "
+                '${formatNaira(projectedTotal)}. '
+                "You've received ${formatNaira(order.amountPaid)}, so "
+                '${formatNaira(order.amountPaid - projectedTotal)} will be '
+                'owed back to the client.\n\n'
+                'You can refund it later from the payment card.',
+              )
+            : const Text('This outfit will be deleted from the order.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -197,7 +235,7 @@ class _OrderItemEditSheetState extends ConsumerState<OrderItemEditSheet> {
       await _notifier.deleteItem(widget.item.id);
       if (mounted) {
         showSuccessSnackbar(context, 'Outfit removed');
-        Navigator.pop(context);
+        _dismissSheet();
       }
     } catch (e) {
       if (mounted) {
@@ -213,9 +251,9 @@ class _OrderItemEditSheetState extends ConsumerState<OrderItemEditSheet> {
     final live = _liveItem(order);
 
     // Deleted from under us (e.g. removed on another screen): close cleanly.
-    if (order != null && live == null) {
+    if (order != null && live == null && !_isClosing) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) Navigator.pop(context);
+        if (mounted) _dismissSheet();
       });
       return const SizedBox.shrink();
     }
@@ -225,7 +263,8 @@ class _OrderItemEditSheetState extends ConsumerState<OrderItemEditSheet> {
     final anyBusy = _saving || _busyStyle;
 
     return Padding(
-      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      padding:
+          EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
       child: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
         child: Form(
@@ -242,8 +281,9 @@ class _OrderItemEditSheetState extends ConsumerState<OrderItemEditSheet> {
                   IconButton(
                     tooltip: 'Remove outfit',
                     icon: const Icon(Icons.delete_outline),
-                    onPressed:
-                        anyBusy ? null : () => _confirmDelete(isLastItem),
+                    onPressed: anyBusy
+                        ? null
+                        : () => _confirmDelete(isLastItem, order),
                   ),
                 ],
               ),
@@ -279,7 +319,8 @@ class _OrderItemEditSheetState extends ConsumerState<OrderItemEditSheet> {
                   Expanded(
                     child: TextFormField(
                       controller: _priceController,
-                      decoration: const InputDecoration(labelText: 'Unit price'),
+                      decoration:
+                          const InputDecoration(labelText: 'Unit price'),
                       keyboardType:
                           const TextInputType.numberWithOptions(decimal: true),
                       validator: (v) {
@@ -310,7 +351,8 @@ class _OrderItemEditSheetState extends ConsumerState<OrderItemEditSheet> {
               const SizedBox(height: 12),
               TextFormField(
                 controller: _notesController,
-                decoration: const InputDecoration(labelText: 'Notes (optional)'),
+                decoration:
+                    const InputDecoration(labelText: 'Notes (optional)'),
                 maxLines: 2,
               ),
               const SizedBox(height: 8),
@@ -657,7 +699,8 @@ class _FabricEditDialogState extends State<_FabricEditDialog> {
     _quantityController = TextEditingController(
       text: f?.quantity != null ? _trimQty(f!.quantity!) : '',
     );
-    _unit = (f?.unit != null && kFabricUnits.contains(f!.unit)) ? f.unit! : 'yards';
+    _unit =
+        (f?.unit != null && kFabricUnits.contains(f!.unit)) ? f.unit! : 'yards';
   }
 
   static String _trimQty(double q) {
@@ -815,55 +858,56 @@ class _StyleRefsRow extends StatelessWidget {
                                     color: Theme.of(context)
                                         .colorScheme
                                         .surfaceContainerHighest,
-                                    child: const Icon(
-                                        Icons.play_circle_outline),
+                                    child:
+                                        const Icon(Icons.play_circle_outline),
                                   )
                                 : Image.network(
                                     ref_.fileUrl,
                                     fit: BoxFit.cover,
-                                    errorBuilder: (_, __, ___) => const Icon(
-                                        Icons.broken_image_outlined),
+                                    errorBuilder: (_, __, ___) =>
+                                        const Icon(Icons.broken_image_outlined),
                                   ),
                           ),
                         ),
-                    Positioned(
-                      top: -6,
-                      right: -6,
-                      child: IconButton(
-                        visualDensity: VisualDensity.compact,
-                        icon: CircleAvatar(
-                          radius: 10,
-                          backgroundColor:
-                              Theme.of(context).colorScheme.errorContainer,
-                          child: Icon(
-                            Icons.close,
-                            size: 13,
-                            color:
-                                Theme.of(context).colorScheme.onErrorContainer,
+                        Positioned(
+                          top: -6,
+                          right: -6,
+                          child: IconButton(
+                            visualDensity: VisualDensity.compact,
+                            icon: CircleAvatar(
+                              radius: 10,
+                              backgroundColor:
+                                  Theme.of(context).colorScheme.errorContainer,
+                              child: Icon(
+                                Icons.close,
+                                size: 13,
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .onErrorContainer,
+                              ),
+                            ),
+                            onPressed: busy ? null : () => onRemove(ref_),
                           ),
                         ),
-                        onPressed: busy ? null : () => onRemove(ref_),
-                      ),
+                      ],
                     ),
-                  ],
-                ),
-              ),
-            InkWell(
-              borderRadius: BorderRadius.circular(8),
-              onTap: busy ? null : onAdd,
-              child: Container(
-                width: 64,
-                height: 64,
-                decoration: BoxDecoration(
+                  ),
+                InkWell(
                   borderRadius: BorderRadius.circular(8),
-                  border:
-                      Border.all(color: Theme.of(context).colorScheme.outline),
+                  onTap: busy ? null : onAdd,
+                  child: Container(
+                    width: 64,
+                    height: 64,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                          color: Theme.of(context).colorScheme.outline),
+                    ),
+                    child: const Icon(Icons.add),
+                  ),
                 ),
-                child: const Icon(Icons.add),
-              ),
-            ),
-          ],
-        );
+              ],
+            );
           },
         ),
       ],

@@ -58,6 +58,7 @@ class OrderDetailNotifier extends FamilyAsyncNotifier<Order, String> {
     String? priority,
     String? discountType,
     double? discountValue,
+    bool? discountIncludesAddons,
   }) =>
       _apply(() => _repo.updateDetails(
             arg,
@@ -66,6 +67,7 @@ class OrderDetailNotifier extends FamilyAsyncNotifier<Order, String> {
             priority: priority,
             discountType: discountType,
             discountValue: discountValue,
+            discountIncludesAddons: discountIncludesAddons,
           ));
 
   /// Caller must pass a status the backend's transition rules accept (see
@@ -131,6 +133,54 @@ class OrderDetailNotifier extends FamilyAsyncNotifier<Order, String> {
 
   Future<void> deleteItem(String itemId) =>
       _apply(() => _repo.deleteItem(arg, itemId));
+
+  // ── Order addons ─────────────────────────────────────────────────────────
+  /// Chargeable extras. All three endpoints return the full updated Order, so
+  /// `_apply` adopts it directly — one round trip repaints both the addons
+  /// list and the money card.
+  ///
+  /// Deliberately **no** `statusEventsProvider` invalidation, unlike
+  /// [addItem]. Adding a garment can push a `ready` order back into
+  /// production and the backend logs that; adding a delivery fee cannot move
+  /// the status, so there is never an event to refetch. Invalidating anyway
+  /// would be a harmless-looking line that quietly teaches the next reader
+  /// that addons behave like items.
+  Future<void> addAddon({
+    required String label,
+    required double amount,
+    int quantity = 1,
+    String? notes,
+  }) =>
+      _apply(() => _repo.addAddon(
+            arg,
+            label: label,
+            amount: amount,
+            quantity: quantity,
+            notes: notes,
+          ));
+
+  Future<void> updateAddon(
+    String addonId, {
+    String? label,
+    double? amount,
+    int? quantity,
+    String? notes,
+  }) =>
+      _apply(() => _repo.updateAddon(
+            arg,
+            addonId,
+            label: label,
+            amount: amount,
+            quantity: quantity,
+            notes: notes,
+          ));
+
+  /// Removing an addon from an already-paid order drops the total below what
+  /// was paid, and the Order that comes back carries `paymentStatus:
+  /// 'overpaid'`. That's the intended outcome — the money card then shows
+  /// "Refund due" — not an error to swallow.
+  Future<void> deleteAddon(String addonId) =>
+      _apply(() => _repo.deleteAddon(arg, addonId));
 
   // ── Order media ──────────────────────────────────────────────────────────
   Future<void> addMedia(File file, {String? notes}) =>

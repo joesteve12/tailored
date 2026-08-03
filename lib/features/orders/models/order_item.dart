@@ -2,6 +2,7 @@ import 'package:freezed_annotation/freezed_annotation.dart';
 
 import '../../../core/models/recipient_ref.dart';
 import '../../../core/utils/json_converters.dart';
+import '../../../core/utils/money.dart';
 import '../../tasks/models/item_production.dart';
 import 'fabric.dart';
 import 'style_reference.dart';
@@ -108,7 +109,7 @@ class OrderItemInput {
   /// A short summary line for the in-form item list, before the order is
   /// submitted (the create form accumulates these locally).
   String get summaryLine =>
-      'Qty $quantity · ${unitPrice.toStringAsFixed(2)} each'
+      'Qty $quantity · ${formatNaira(unitPrice)} each'
       '${fabrics.isNotEmpty ? ' · ${fabrics.length} fabric${fabrics.length == 1 ? '' : 's'}' : ''}'
       '${recipient.isGuest ? ' · for guest' : ''}';
 

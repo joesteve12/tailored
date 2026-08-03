@@ -11,7 +11,16 @@
       ]
     },
     {
-      "name": "tailored (iOS simulator → local backend)",
+      "name": "tailored (render live)",
+      "request": "launch",
+      "type": "dart",
+      "program": "lib/main.dart",
+      "toolArgs": [
+        "--dart-define=API_BASE_URL=https://tailored-backend-5yxa.onrender.com/api/v1"
+      ]
+    },
+    {
+      "name": "tailored (android physical device → local backend)",
       "request": "launch",
       "type": "dart",
       "program": "lib/main.dart",
@@ -19,15 +28,7 @@
         "--dart-define=API_BASE_URL=http://127.0.0.1:8001/api/v1"
       ]
     },
-    {
-      "name": "tailored (physical device → LAN backend)",
-      "request": "launch",
-      "type": "dart",
-      "program": "lib/main.dart",
-      "toolArgs": [
-        "--dart-define=API_BASE_URL=http://192.168.1.100:8001/api/v1"
-      ]
-    },
+
     {
       "name": "tailored (release profile → Railway)",
       "request": "launch",

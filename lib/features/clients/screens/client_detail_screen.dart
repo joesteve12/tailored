@@ -1,6 +1,8 @@
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
@@ -20,6 +22,7 @@ import '../../../core/utils/hero_tags.dart';
 
 import '../../../core/widgets/feedback.dart';
 import '../../../core/widgets/image_viewer.dart';
+
 class ClientDetailScreen extends ConsumerStatefulWidget {
   const ClientDetailScreen({
     super.key,
@@ -51,22 +54,52 @@ class _ClientDetailScreenState extends ConsumerState<ClientDetailScreen> {
   bool _isDeleting = false;
 
   Future<void> _pickAndUploadPhoto() async {
+    HapticFeedback.selectionClick();
     final source = await showModalBottomSheet<ImageSource>(
       context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
       builder: (context) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            ListTile(
-              leading: const Icon(Icons.photo_camera),
-              title: const Text('Take a photo'),
+            const SizedBox(height: 10),
+            Container(
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.outlineVariant,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 18),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Row(
+                children: [
+                  Text(
+                    'Update photo',
+                    style: Theme.of(context)
+                        .textTheme
+                        .titleMedium
+                        ?.copyWith(fontWeight: FontWeight.w600),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+            _PhotoSourceTile(
+              icon: Icons.photo_camera_outlined,
+              label: 'Take a photo',
               onTap: () => Navigator.pop(context, ImageSource.camera),
             ),
-            ListTile(
-              leading: const Icon(Icons.photo_library),
-              title: const Text('Choose from gallery'),
+            _PhotoSourceTile(
+              icon: Icons.photo_library_outlined,
+              label: 'Choose from gallery',
               onTap: () => Navigator.pop(context, ImageSource.gallery),
             ),
+            const SizedBox(height: 8),
           ],
         ),
       ),
@@ -91,7 +124,10 @@ class _ClientDetailScreenState extends ConsumerState<ClientDetailScreen> {
       // client_repository.dart). If the photo doesn't show up after this,
       // that assumption was wrong.
       await ref.read(clientDetailProvider(widget.clientId).notifier).refresh();
-      if (mounted) showSuccessSnackbar(context, 'Photo uploaded');
+      if (mounted) {
+        HapticFeedback.lightImpact();
+        showSuccessSnackbar(context, 'Photo uploaded');
+      }
     } catch (e) {
       if (mounted) {
         showErrorSnackbar(context, e, action: 'Photo upload failed');
@@ -102,17 +138,25 @@ class _ClientDetailScreenState extends ConsumerState<ClientDetailScreen> {
   }
 
   Future<void> _confirmDelete() async {
+    final scheme = Theme.of(context).colorScheme;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        icon: Icon(Icons.warning_amber_rounded, color: scheme.error, size: 32),
         title: const Text('Delete client?'),
-        content: const Text('This cannot be undone.'),
+        content: const Text(
+          'This removes their profile, guest list, and measurements. '
+          'This cannot be undone.',
+        ),
+        actionsAlignment: MainAxisAlignment.spaceBetween,
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
             child: const Text('Cancel'),
           ),
-          TextButton(
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: scheme.error),
             onPressed: () => Navigator.pop(context, true),
             child: const Text('Delete'),
           ),
@@ -121,6 +165,7 @@ class _ClientDetailScreenState extends ConsumerState<ClientDetailScreen> {
     );
     if (confirmed != true || !mounted) return;
 
+    HapticFeedback.mediumImpact();
     setState(() => _isDeleting = true);
     try {
       await ref.read(clientRepositoryProvider).delete(widget.clientId);
@@ -165,11 +210,15 @@ class _ClientDetailScreenState extends ConsumerState<ClientDetailScreen> {
     }
 
     return Scaffold(
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
-        title: const Text('Client'),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        surfaceTintColor: Colors.transparent,
         actions: [
           IconButton(
-            icon: const Icon(Icons.edit),
+            icon: const Icon(Icons.edit_outlined),
             tooltip: 'Edit',
             onPressed: () => context.push('/clients/${widget.clientId}/edit'),
           ),
@@ -186,166 +235,357 @@ class _ClientDetailScreenState extends ConsumerState<ClientDetailScreen> {
           ),
         ],
       ),
-      body: body,
+      body: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 220),
+        child: KeyedSubtree(
+          key: ValueKey(client != null
+              ? 'content'
+              : clientAsync.hasError
+                  ? 'error'
+                  : 'loading'),
+          child: body,
+        ),
+      ),
     );
   }
 
   Widget _buildBody(BuildContext context, Client client) {
+    final scheme = Theme.of(context).colorScheme;
+
     return RefreshIndicator(
-          onRefresh: () async {
-            await Future.wait<void>([
-              ref
-                  .read(clientDetailProvider(widget.clientId).notifier)
-                  .refresh(),
-              ref.read(guestListProvider(widget.clientId).notifier).refresh(),
-            ]);
-            // Orders section — a plain FutureProvider.family with no notifier,
-            // so refresh via invalidate rather than a .refresh() method.
-            ref.invalidate(clientOrdersProvider(widget.clientId));
-          },
-          child: SingleChildScrollView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              children: [
-                Stack(
-                  children: [
-                    GestureDetector(
-                      onTap: client.photoUrl == null
-                          ? null
-                          : () => showImageViewer(
-                                context,
-                                urls: [client.photoUrl!],
-                                zoomable: false,
-                              ),
-                      child: Hero(
-                        // Wraps the avatar only — NOT the enclosing Stack. The
-                        // camera-upload badge is pinned inside that Stack, and
-                        // it must stay put while the photo flies.
-                        tag: clientPhotoHeroTag(widget.clientId),
-                        // MaterialRectArcTween (the MaterialApp default) arcs
-                        // the rect's two opposite corners along *separate*
-                        // circles. On a circle that also grows 20px → 48px
-                        // radius that reads as a squash-and-wobble. The centre
-                        // variant arcs the centre point and scales width and
-                        // height uniformly — the circle stays a circle.
-                        //
-                        // This is the *destination* Hero on a push, and the
-                        // destination's tween is the one Flutter consults
-                        // (`toHero.createRectTween ?? controller.createRectTween`),
-                        // so this governs the inbound flight. The outbound
-                        // (pop) flight is governed by whichever Hero we're
-                        // popping back to — hence the same tween on the list
-                        // row and the order tile.
-                        createRectTween: (begin, end) =>
-                            MaterialRectCenterArcTween(begin: begin, end: end),
-                        // Without this the iOS back-swipe pops the route with
-                        // no flight at all — the avatar just vanishes.
-                        transitionOnUserGestures: true,
-                        child: CircleAvatar(
-                          radius: 48,
-                          backgroundImage: client.photoUrl != null
-                              ? NetworkImage(client.photoUrl!)
-                              : null,
-                          child: client.photoUrl == null
-                              ? Text(
-                                  client.name.isNotEmpty
-                                      ? client.name[0].toUpperCase()
-                                      : '?',
-                                  style: const TextStyle(fontSize: 32),
-                                )
-                              : null,
-                        ),
-                      ),
-                    ),
-                    Positioned(
-                      bottom: 0,
-                      right: 0,
-                      child: GestureDetector(
-                        onTap: _isUploadingPhoto ? null : _pickAndUploadPhoto,
-                        child: CircleAvatar(
-                          radius: 16,
-                          backgroundColor:
-                              Theme.of(context).colorScheme.primary,
-                          child: _isUploadingPhoto
-                              ? const SizedBox(
-                                  height: 14,
-                                  width: 14,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: Colors.white,
-                                  ),
-                                )
-                              : const Icon(Icons.camera_alt,
-                                  size: 16, color: Colors.white),
-                        ),
-                      ),
-                    ),
+      onRefresh: () async {
+        await Future.wait<void>([
+          ref.read(clientDetailProvider(widget.clientId).notifier).refresh(),
+          ref.read(guestListProvider(widget.clientId).notifier).refresh(),
+        ]);
+        // Orders section — a plain FutureProvider.family with no notifier,
+        // so refresh via invalidate rather than a .refresh() method.
+        ref.invalidate(clientOrdersProvider(widget.clientId));
+      },
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        child: Column(
+          children: [
+            // Identity header — a quiet gradient plinth that gives the
+            // avatar somewhere to sit, rather than dropping it straight
+            // onto the scaffold background.
+            Container(
+              width: double.infinity,
+              padding: EdgeInsets.fromLTRB(
+                24,
+                MediaQuery.of(context).padding.top + kToolbarHeight + 12,
+                24,
+                28,
+              ),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    scheme.primaryContainer.withOpacity(0.55),
+                    scheme.surface.withOpacity(0),
                   ],
                 ),
-                const SizedBox(height: 20),
-                Text(client.name,
-                    style: Theme.of(context).textTheme.headlineSmall),
-                const SizedBox(height: 24),
-                _InfoRow(
-                    icon: Icons.phone, label: 'Phone', value: client.phone),
-                if (client.email != null && client.email!.isNotEmpty)
-                  _InfoRow(
-                      icon: Icons.email, label: 'Email', value: client.email!),
-                if (client.address != null && client.address!.isNotEmpty)
-                  _InfoRow(
-                      icon: Icons.location_on,
-                      label: 'Address',
-                      value: client.address!),
-                if (client.notes != null && client.notes!.isNotEmpty)
-                  _InfoRow(
-                      icon: Icons.notes, label: 'Notes', value: client.notes!),
-                const SizedBox(height: 24),
-                const Divider(),
-                const SizedBox(height: 8),
-                GuestListSection(clientId: widget.clientId),
-                const SizedBox(height: 24),
-                const Divider(),
-                const SizedBox(height: 8),
-                MeasurementListSection(
-                  recipient: clientRecipient(widget.clientId),
-                ),
-                const SizedBox(height: 24),
-                const Divider(),
-                const SizedBox(height: 8),
-                ClientOrdersSection(clientId: widget.clientId),
-              ],
+              ),
+              child: Column(
+                children: [
+                  SizedBox(
+                    width: 132,
+                    height: 132,
+                    child: Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        // Signature element: a measuring-tape ring around
+                        // the avatar — a small nod to what this app is
+                        // actually for (fittings and measurements), instead
+                        // of a generic decorative halo.
+                        Positioned.fill(
+                          child: CustomPaint(
+                            painter: _MeasuringTapeRingPainter(
+                              color: scheme.primary,
+                            ),
+                          ),
+                        ),
+                        Center(
+                          child: Hero(
+                            // Wraps the avatar only — NOT the enclosing
+                            // Stack. The camera-upload badge is pinned
+                            // inside that Stack, and it must stay put while
+                            // the photo flies.
+                            tag: clientPhotoHeroTag(widget.clientId),
+                            // MaterialRectArcTween (the MaterialApp
+                            // default) arcs the rect's two opposite corners
+                            // along *separate* circles. On a circle that
+                            // also grows 20px → 48px radius that reads as a
+                            // squash-and-wobble. The centre variant arcs
+                            // the centre point and scales width and height
+                            // uniformly — the circle stays a circle.
+                            //
+                            // This is the *destination* Hero on a push, and
+                            // the destination's tween is the one Flutter
+                            // consults (`toHero.createRectTween ??
+                            // controller.createRectTween`), so this governs
+                            // the inbound flight. The outbound (pop) flight
+                            // is governed by whichever Hero we're popping
+                            // back to — hence the same tween on the list
+                            // row and the order tile.
+                            createRectTween: (begin, end) =>
+                                MaterialRectCenterArcTween(
+                                    begin: begin, end: end),
+                            // Without this the iOS back-swipe pops the
+                            // route with no flight at all — the avatar just
+                            // vanishes.
+                            transitionOnUserGestures: true,
+                            child: Material(
+                              color: Colors.transparent,
+                              shape: const CircleBorder(),
+                              clipBehavior: Clip.antiAlias,
+                              child: InkWell(
+                                onTap: client.photoUrl == null
+                                    ? null
+                                    : () => showImageViewer(
+                                          context,
+                                          urls: [client.photoUrl!],
+                                          zoomable: false,
+                                        ),
+                                child: CircleAvatar(
+                                  radius: 48,
+                                  backgroundColor: scheme.primaryContainer,
+                                  backgroundImage: client.photoUrl != null
+                                      ? NetworkImage(client.photoUrl!)
+                                      : null,
+                                  child: client.photoUrl == null
+                                      ? Text(
+                                          client.name.isNotEmpty
+                                              ? client.name[0].toUpperCase()
+                                              : '?',
+                                          style: TextStyle(
+                                            fontSize: 32,
+                                            fontWeight: FontWeight.w600,
+                                            color: scheme.onPrimaryContainer,
+                                          ),
+                                        )
+                                      : null,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        Positioned(
+                          bottom: 18,
+                          right: 18,
+                          child: GestureDetector(
+                            onTap:
+                                _isUploadingPhoto ? null : _pickAndUploadPhoto,
+                            child: Container(
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: scheme.surface,
+                                  width: 2.5,
+                                ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.15),
+                                    blurRadius: 6,
+                                    offset: const Offset(0, 2),
+                                  ),
+                                ],
+                              ),
+                              child: CircleAvatar(
+                                radius: 16,
+                                backgroundColor: scheme.primary,
+                                child: _isUploadingPhoto
+                                    ? SizedBox(
+                                        height: 14,
+                                        width: 14,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          color: scheme.onPrimary,
+                                        ),
+                                      )
+                                    : Icon(Icons.camera_alt,
+                                        size: 16, color: scheme.onPrimary),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  Text(
+                    client.name,
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                  ),
+                ],
+              ),
             ),
-          ),
+
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+              child: Column(
+                children: [
+                  _ContactCard(client: client),
+                  const SizedBox(height: 20),
+                  _SectionCard(
+                    child: GuestListSection(clientId: widget.clientId),
+                  ),
+                  const SizedBox(height: 20),
+                  _SectionCard(
+                    child: MeasurementListSection(
+                      recipient: clientRecipient(widget.clientId),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  _SectionCard(
+                    child: ClientOrdersSection(clientId: widget.clientId),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// A quiet elevated surface for a section widget (Guests / Measurements /
+/// Orders). Each of those already renders its own title, icon, and action
+/// button internally — this just gives that content somewhere to sit
+/// instead of floating loose on the scaffold background, matching
+/// `_ContactCard` above so the whole page reads as one family of cards.
+class _SectionCard extends StatelessWidget {
+  const _SectionCard({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: scheme.outlineVariant.withOpacity(0.4)),
+      ),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
+      child: child,
+    );
+  }
+}
+
+/// Groups phone / email / address / notes into a single elevated card
+/// instead of four loose rows floating on the scaffold background.
+class _ContactCard extends StatelessWidget {
+  const _ContactCard({required this.client});
+
+  final Client client;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
+    final rows = <Widget>[
+      _InfoRow(
+        icon: Icons.phone_outlined,
+        label: 'Phone',
+        value: client.phone,
+        accent: scheme.primary,
+      ),
+      if (client.email != null && client.email!.isNotEmpty)
+        _InfoRow(
+          icon: Icons.email_outlined,
+          label: 'Email',
+          value: client.email!,
+          accent: scheme.tertiary,
+        ),
+      if (client.address != null && client.address!.isNotEmpty)
+        _InfoRow(
+          icon: Icons.location_on_outlined,
+          label: 'Address',
+          value: client.address!,
+          accent: scheme.secondary,
+        ),
+      if (client.notes != null && client.notes!.isNotEmpty)
+        _InfoRow(
+          icon: Icons.notes_outlined,
+          label: 'Notes',
+          value: client.notes!,
+          accent: scheme.primary,
+        ),
+    ];
+
+    return Container(
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: scheme.outlineVariant.withOpacity(0.4)),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      child: Column(
+        children: [
+          for (var i = 0; i < rows.length; i++) ...[
+            rows[i],
+            if (i != rows.length - 1)
+              Divider(
+                height: 1,
+                color: scheme.outlineVariant.withOpacity(0.4),
+              ),
+          ],
+        ],
+      ),
     );
   }
 }
 
 class _InfoRow extends StatelessWidget {
-  const _InfoRow(
-      {required this.icon, required this.label, required this.value});
+  const _InfoRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.accent,
+  });
 
   final IconData icon;
   final String label;
   final String value;
+  final Color accent;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.symmetric(vertical: 12),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 20, color: Theme.of(context).colorScheme.outline),
-          const SizedBox(width: 12),
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: accent.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, size: 18, color: accent),
+          ),
+          const SizedBox(width: 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(label,
-                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          color: Theme.of(context).colorScheme.outline,
-                        )),
+                Text(
+                  label.toUpperCase(),
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: Theme.of(context).colorScheme.outline,
+                        letterSpacing: 0.6,
+                      ),
+                ),
+                const SizedBox(height: 2),
                 Text(value, style: Theme.of(context).textTheme.bodyMedium),
               ],
             ),
@@ -354,4 +594,80 @@ class _InfoRow extends StatelessWidget {
       ),
     );
   }
+}
+
+class _PhotoSourceTile extends StatelessWidget {
+  const _PhotoSourceTile({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return ListTile(
+      leading: Container(
+        width: 40,
+        height: 40,
+        decoration: BoxDecoration(
+          color: scheme.primaryContainer,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Icon(icon, color: scheme.onPrimaryContainer),
+      ),
+      title: Text(label),
+      onTap: onTap,
+    );
+  }
+}
+
+/// Decorative ring of measuring-tape ticks behind the client's avatar.
+/// Purely cosmetic — sits as a sibling to the Hero in the Stack, so it
+/// never enters the flying subtree and has no bearing on the Hero flight.
+class _MeasuringTapeRingPainter extends CustomPainter {
+  const _MeasuringTapeRingPainter({required this.color});
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = size.width / 2;
+
+    final tickPaint = Paint()
+      ..color = color.withOpacity(0.35)
+      ..strokeWidth = 1.4
+      ..strokeCap = StrokeCap.round;
+
+    const tickCount = 60;
+    for (var i = 0; i < tickCount; i++) {
+      final angle = (2 * math.pi / tickCount) * i;
+      final isMajor = i % 5 == 0;
+      final tickLength = isMajor ? 8.0 : 4.0;
+      final outer = Offset(
+        center.dx + radius * math.cos(angle),
+        center.dy + radius * math.sin(angle),
+      );
+      final inner = Offset(
+        center.dx + (radius - tickLength) * math.cos(angle),
+        center.dy + (radius - tickLength) * math.sin(angle),
+      );
+      canvas.drawLine(
+        inner,
+        outer,
+        isMajor
+            ? (tickPaint..color = color.withOpacity(0.55))
+            : (tickPaint..color = color.withOpacity(0.25)),
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _MeasuringTapeRingPainter oldDelegate) =>
+      oldDelegate.color != color;
 }

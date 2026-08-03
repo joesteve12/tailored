@@ -2,19 +2,26 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/utils/share_document.dart';
-import '../../../core/widgets/async_error_view.dart';
 import '../../../core/widgets/feedback.dart';
 import '../../orders/models/order.dart';
 import '../data/document_repository.dart';
+import '../state/document_providers.dart';
 
-/// Invoice / receipt sharing on the order screen. Fetches the server-generated
-/// PDF and opens the OS share sheet (reusing [shareDocumentBytes] from the
-/// work-order flow), so the owner can send it to the client over WhatsApp.
+/// Invoice sharing on the order screen. Fetches the server-generated PDF and
+/// opens the OS share sheet (reusing [shareDocumentBytes] from the work-order
+/// flow), so the owner can send it over WhatsApp.
 ///
-/// Which documents are offered tracks payment state, matching the backend's
-/// intent: an **invoice** while there's still an outstanding balance, a
-/// **receipt** once anything has been paid. (A partially-paid order shows
-/// both.) If neither applies the section renders nothing.
+/// **Invoice only.** The order-level receipt button used to live here and is
+/// gone: receipts are per payment now, and they're issued from the row they
+/// describe in the Activity section. An order-level receipt couldn't answer
+/// the one question a receipt is for — what did this client hand over, when,
+/// and what was left — because it drew from live order totals, so taking a
+/// second payment silently rewrote the first receipt.
+///
+/// The invoice is offered while there's still a balance to invoice for. The
+/// backend refuses it outright on `paid` **and `overpaid`**; the second case
+/// is the one worth spelling out, since invoicing a client who is owed money
+/// back is exactly the mistake that state exists to prevent.
 class OrderDocumentActions extends ConsumerStatefulWidget {
   const OrderDocumentActions({super.key, required this.order});
 
@@ -27,63 +34,46 @@ class OrderDocumentActions extends ConsumerStatefulWidget {
 
 class _OrderDocumentActionsState extends ConsumerState<OrderDocumentActions> {
   bool _busyInvoice = false;
-  bool _busyReceipt = false;
 
   Order get order => widget.order;
 
-  Future<void> _share({
-    required bool invoice,
-  }) async {
+  Future<void> _shareInvoice() async {
     final format = await pickDocumentFormat(context);
     if (format == null || !mounted) return;
 
-    setState(() {
-      if (invoice) {
-        _busyInvoice = true;
-      } else {
-        _busyReceipt = true;
-      }
-    });
+    setState(() => _busyInvoice = true);
     try {
-      final repo = ref.read(documentRepositoryProvider);
-      final bytes = invoice
-          ? await repo.fetchInvoice(order.id, format: format.apiValue)
-          : await repo.fetchReceipt(order.id, format: format.apiValue);
-      final kind = invoice ? 'invoice' : 'receipt';
-      final name =
-          '${kind}_${safeFileSegment(order.orderNumber)}.${format.extension}';
+      final bytes = await ref
+          .read(documentRepositoryProvider)
+          .fetchInvoice(order.id, format: format.apiValue);
       await shareDocumentBytes(
         bytes,
-        fileName: name,
+        fileName: 'invoice_${safeFileSegment(order.orderNumber)}'
+            '.${format.extension}',
         mimeType: format.mimeType,
-        text: '${invoice ? 'Invoice' : 'Receipt'} · order ${order.orderNumber}',
+        text: 'Invoice · order ${order.orderNumber}',
       );
+      // The backend logs every generation; refresh so the Activity section's
+      // delete warnings see an up-to-date document list.
+      ref.invalidate(orderDocumentsProvider(order.id));
     } catch (e) {
       if (mounted) {
-        showErrorSnackbar(
-          context,
-          e,
-          action: 'Could not prepare ${invoice ? 'invoice' : 'receipt'}',
-        );
+        showErrorSnackbar(context, e, action: 'Could not prepare invoice');
       }
     } finally {
-      if (mounted) {
-        setState(() {
-          if (invoice) {
-            _busyInvoice = false;
-          } else {
-            _busyReceipt = false;
-          }
-        });
-      }
+      if (mounted) setState(() => _busyInvoice = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final showInvoice = order.balanceDue > 0.005;
-    final showReceipt = order.amountPaid > 0.005;
-    if (!showInvoice && !showReceipt) return const SizedBox.shrink();
+    // Mirrors the backend gate rather than approximating it: 'paid' and
+    // 'overpaid' both 400, and a button that always fails is worse than no
+    // button. `balanceDue` alone would be wrong here — it reads zero on an
+    // overpaid order too, but for the opposite reason.
+    final blocked = order.paymentStatus == 'paid' ||
+        order.paymentStatus == 'overpaid';
+    if (blocked) return const SizedBox.shrink();
 
     return Card(
       child: Padding(
@@ -92,38 +82,24 @@ class _OrderDocumentActionsState extends ConsumerState<OrderDocumentActions> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text('Documents', style: Theme.of(context).textTheme.titleSmall),
+            const SizedBox(height: 4),
+            Text(
+              'Receipts are issued per payment — see Activity.',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.outline,
+                  ),
+            ),
             const SizedBox(height: 8),
-            Wrap(
-              spacing: 12,
-              runSpacing: 8,
-              children: [
-                if (showInvoice)
-                  OutlinedButton.icon(
-                    onPressed:
-                        _busyInvoice ? null : () => _share(invoice: true),
-                    icon: _busyInvoice
-                        ? const SizedBox(
-                            height: 16,
-                            width: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.receipt_long_outlined),
-                    label: const Text('Share invoice'),
-                  ),
-                if (showReceipt)
-                  OutlinedButton.icon(
-                    onPressed:
-                        _busyReceipt ? null : () => _share(invoice: false),
-                    icon: _busyReceipt
-                        ? const SizedBox(
-                            height: 16,
-                            width: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.receipt_outlined),
-                    label: const Text('Share receipt'),
-                  ),
-              ],
+            OutlinedButton.icon(
+              onPressed: _busyInvoice ? null : _shareInvoice,
+              icon: _busyInvoice
+                  ? const SizedBox(
+                      height: 16,
+                      width: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.receipt_long_outlined),
+              label: const Text('Share invoice'),
             ),
           ],
         ),
