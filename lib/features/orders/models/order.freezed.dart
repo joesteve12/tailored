@@ -22,7 +22,13 @@ Order _$OrderFromJson(Map<String, dynamic> json) {
 mixin _$Order {
   String get id => throw _privateConstructorUsedError;
   @JsonKey(name: 'client_id')
-  String get clientId => throw _privateConstructorUsedError;
+  String get clientId =>
+      throw _privateConstructorUsedError; // The list endpoint denormalises the client's name onto each order so the
+// list card can render it without a per-row client fetch. Nullable because
+// single-order reads (getById) don't include it — the order detail screen
+// gets the name from its own client tile instead.
+  @JsonKey(name: 'client_name')
+  String? get clientName => throw _privateConstructorUsedError;
   @JsonKey(name: 'order_number')
   String get orderNumber => throw _privateConstructorUsedError;
   String get status => throw _privateConstructorUsedError;
@@ -73,6 +79,7 @@ abstract class $OrderCopyWith<$Res> {
   $Res call(
       {String id,
       @JsonKey(name: 'client_id') String clientId,
+      @JsonKey(name: 'client_name') String? clientName,
       @JsonKey(name: 'order_number') String orderNumber,
       String status,
       String priority,
@@ -118,6 +125,7 @@ class _$OrderCopyWithImpl<$Res, $Val extends Order>
   $Res call({
     Object? id = null,
     Object? clientId = null,
+    Object? clientName = freezed,
     Object? orderNumber = null,
     Object? status = null,
     Object? priority = null,
@@ -147,6 +155,10 @@ class _$OrderCopyWithImpl<$Res, $Val extends Order>
           ? _value.clientId
           : clientId // ignore: cast_nullable_to_non_nullable
               as String,
+      clientName: freezed == clientName
+          ? _value.clientName
+          : clientName // ignore: cast_nullable_to_non_nullable
+              as String?,
       orderNumber: null == orderNumber
           ? _value.orderNumber
           : orderNumber // ignore: cast_nullable_to_non_nullable
@@ -237,6 +249,7 @@ abstract class _$$OrderImplCopyWith<$Res> implements $OrderCopyWith<$Res> {
   $Res call(
       {String id,
       @JsonKey(name: 'client_id') String clientId,
+      @JsonKey(name: 'client_name') String? clientName,
       @JsonKey(name: 'order_number') String orderNumber,
       String status,
       String priority,
@@ -280,6 +293,7 @@ class __$$OrderImplCopyWithImpl<$Res>
   $Res call({
     Object? id = null,
     Object? clientId = null,
+    Object? clientName = freezed,
     Object? orderNumber = null,
     Object? status = null,
     Object? priority = null,
@@ -309,6 +323,10 @@ class __$$OrderImplCopyWithImpl<$Res>
           ? _value.clientId
           : clientId // ignore: cast_nullable_to_non_nullable
               as String,
+      clientName: freezed == clientName
+          ? _value.clientName
+          : clientName // ignore: cast_nullable_to_non_nullable
+              as String?,
       orderNumber: null == orderNumber
           ? _value.orderNumber
           : orderNumber // ignore: cast_nullable_to_non_nullable
@@ -395,6 +413,7 @@ class _$OrderImpl extends _Order {
   const _$OrderImpl(
       {required this.id,
       @JsonKey(name: 'client_id') required this.clientId,
+      @JsonKey(name: 'client_name') this.clientName,
       @JsonKey(name: 'order_number') required this.orderNumber,
       required this.status,
       this.priority = 'normal',
@@ -435,6 +454,13 @@ class _$OrderImpl extends _Order {
   @override
   @JsonKey(name: 'client_id')
   final String clientId;
+// The list endpoint denormalises the client's name onto each order so the
+// list card can render it without a per-row client fetch. Nullable because
+// single-order reads (getById) don't include it — the order detail screen
+// gets the name from its own client tile instead.
+  @override
+  @JsonKey(name: 'client_name')
+  final String? clientName;
   @override
   @JsonKey(name: 'order_number')
   final String orderNumber;
@@ -511,7 +537,7 @@ class _$OrderImpl extends _Order {
 
   @override
   String toString() {
-    return 'Order(id: $id, clientId: $clientId, orderNumber: $orderNumber, status: $status, priority: $priority, dueDate: $dueDate, itemsSubtotal: $itemsSubtotal, addonsTotal: $addonsTotal, subtotal: $subtotal, discountType: $discountType, discountValue: $discountValue, discountAmount: $discountAmount, discountIncludesAddons: $discountIncludesAddons, totalAmount: $totalAmount, amountPaid: $amountPaid, paymentStatus: $paymentStatus, notes: $notes, items: $items, addons: $addons, media: $media, createdAt: $createdAt)';
+    return 'Order(id: $id, clientId: $clientId, clientName: $clientName, orderNumber: $orderNumber, status: $status, priority: $priority, dueDate: $dueDate, itemsSubtotal: $itemsSubtotal, addonsTotal: $addonsTotal, subtotal: $subtotal, discountType: $discountType, discountValue: $discountValue, discountAmount: $discountAmount, discountIncludesAddons: $discountIncludesAddons, totalAmount: $totalAmount, amountPaid: $amountPaid, paymentStatus: $paymentStatus, notes: $notes, items: $items, addons: $addons, media: $media, createdAt: $createdAt)';
   }
 
   @override
@@ -522,6 +548,8 @@ class _$OrderImpl extends _Order {
             (identical(other.id, id) || other.id == id) &&
             (identical(other.clientId, clientId) ||
                 other.clientId == clientId) &&
+            (identical(other.clientName, clientName) ||
+                other.clientName == clientName) &&
             (identical(other.orderNumber, orderNumber) ||
                 other.orderNumber == orderNumber) &&
             (identical(other.status, status) || other.status == status) &&
@@ -562,6 +590,7 @@ class _$OrderImpl extends _Order {
         runtimeType,
         id,
         clientId,
+        clientName,
         orderNumber,
         status,
         priority,
@@ -603,6 +632,7 @@ abstract class _Order extends Order {
   const factory _Order(
           {required final String id,
           @JsonKey(name: 'client_id') required final String clientId,
+          @JsonKey(name: 'client_name') final String? clientName,
           @JsonKey(name: 'order_number') required final String orderNumber,
           required final String status,
           final String priority,
@@ -639,7 +669,14 @@ abstract class _Order extends Order {
   String get id;
   @override
   @JsonKey(name: 'client_id')
-  String get clientId;
+  String
+      get clientId; // The list endpoint denormalises the client's name onto each order so the
+// list card can render it without a per-row client fetch. Nullable because
+// single-order reads (getById) don't include it — the order detail screen
+// gets the name from its own client tile instead.
+  @override
+  @JsonKey(name: 'client_name')
+  String? get clientName;
   @override
   @JsonKey(name: 'order_number')
   String get orderNumber;

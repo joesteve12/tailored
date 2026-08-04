@@ -9,6 +9,7 @@ part of 'order.dart';
 _$OrderImpl _$$OrderImplFromJson(Map<String, dynamic> json) => _$OrderImpl(
       id: json['id'] as String,
       clientId: json['client_id'] as String,
+      clientName: json['client_name'] as String?,
       orderNumber: json['order_number'] as String,
       status: json['status'] as String,
       priority: json['priority'] as String? ?? 'normal',
@@ -53,6 +54,7 @@ Map<String, dynamic> _$$OrderImplToJson(_$OrderImpl instance) =>
     <String, dynamic>{
       'id': instance.id,
       'client_id': instance.clientId,
+      'client_name': instance.clientName,
       'order_number': instance.orderNumber,
       'status': instance.status,
       'priority': instance.priority,

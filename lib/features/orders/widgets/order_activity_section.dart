@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/theme/app_tokens.dart';
 import '../../../core/utils/money.dart';
 import '../../../core/utils/order_labels.dart';
 import '../../../core/utils/payment_labels.dart';
@@ -434,10 +435,10 @@ class _PaymentRow extends StatelessWidget {
     final isTipOnly = payment.isStandaloneTip;
 
     final Color accent = isRefund
-        ? scheme.error
+        ? StatusColors.refund(scheme)
         : isTipOnly
-            ? Colors.amber.shade800
-            : Colors.green.shade700;
+            ? StatusColors.tipAccent
+            : StatusColors.paymentAccent;
 
     final String chipLabel =
         isRefund ? 'Refund' : (isTipOnly ? 'Tip' : 'Payment');
@@ -456,7 +457,8 @@ class _PaymentRow extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _EntryDot(color: isRefund ? scheme.error : Colors.teal),
+          _EntryDot(
+              color: isRefund ? StatusColors.refund(scheme) : StatusColors.paymentDot),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -469,8 +471,8 @@ class _PaymentRow extends StatelessWidget {
                       color: isRefund
                           ? scheme.errorContainer
                           : (isTipOnly
-                              ? Colors.amber.shade50
-                              : Colors.green.shade50),
+                              ? StatusColors.tipChipBg
+                              : StatusColors.paymentChipBg),
                       textColor: isRefund ? scheme.onErrorContainer : accent,
                     ),
                     // A tip riding along with a payment gets its own chip so
@@ -481,8 +483,8 @@ class _PaymentRow extends StatelessWidget {
                       const SizedBox(width: 6),
                       _MiniChip(
                         label: 'Tip ${formatNaira(payment.tipAmount)}',
-                        color: Colors.amber.shade50,
-                        textColor: Colors.amber.shade900,
+                        color: StatusColors.tipChipBg,
+                        textColor: StatusColors.tipChipText,
                       ),
                     ],
                     if (payment.receiptNumber != null) ...[
@@ -752,16 +754,16 @@ class _TaskEventRow extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const _EntryDot(color: Colors.indigo),
+          const _EntryDot(color: StatusColors.taskDot),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _MiniChip(
+                const _MiniChip(
                   label: 'Task',
-                  color: Colors.indigo.shade50,
-                  textColor: Colors.indigo.shade800,
+                  color: StatusColors.taskChipBg,
+                  textColor: StatusColors.taskChipText,
                 ),
                 const SizedBox(height: 4),
                 Text(
@@ -819,16 +821,16 @@ class _StatusEventRow extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const _EntryDot(color: Colors.teal),
+          const _EntryDot(color: StatusColors.statusDot),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _MiniChip(
+                const _MiniChip(
                   label: 'Status',
-                  color: Colors.blue.shade50,
-                  textColor: Colors.blue.shade800,
+                  color: StatusColors.statusChipBg,
+                  textColor: StatusColors.statusChipText,
                 ),
                 const SizedBox(height: 4),
                 Text(

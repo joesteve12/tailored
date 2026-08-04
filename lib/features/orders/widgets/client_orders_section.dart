@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/theme/app_tokens.dart';
 import '../../../core/utils/order_labels.dart';
 import '../../../core/utils/money.dart';
 import '../../../core/utils/payment_labels.dart';
@@ -237,7 +238,7 @@ class _OrderRow extends StatelessWidget {
                               icon: Icons.event_outlined,
                               label: 'Due $dueLabel',
                               color: overdue
-                                  ? const Color(0xFFEA580C)
+                                  ? StatusColors.urgent
                                   : scheme.onSurfaceVariant,
                               emphasized: overdue,
                             ),
@@ -372,16 +373,20 @@ _StatusMeta _statusMeta(String status, ColorScheme scheme) {
   final key = status.toLowerCase().replaceAll(RegExp(r'[^a-z]'), '');
   switch (key) {
     case 'pending':
-      return _StatusMeta(const Color(0xFFB8860B), Icons.schedule_rounded);
+      return const _StatusMeta(
+          StatusColors.orderPending, Icons.schedule_rounded);
     case 'inprogress':
-      return _StatusMeta(const Color(0xFF2563EB), Icons.autorenew_rounded);
+      return const _StatusMeta(
+          StatusColors.orderInProgress, Icons.autorenew_rounded);
     case 'onhold':
-      return _StatusMeta(const Color(0xFF7C3AED), Icons.pause_circle_rounded);
+      return const _StatusMeta(
+          StatusColors.orderOnHold, Icons.pause_circle_rounded);
     case 'delivered':
-      return _StatusMeta(const Color(0xFF16A34A), Icons.check_circle_rounded);
+      return const _StatusMeta(
+          StatusColors.orderDelivered, Icons.check_circle_rounded);
     case 'cancelled':
     case 'canceled':
-      return _StatusMeta(scheme.error, Icons.cancel_rounded);
+      return _StatusMeta(StatusColors.cancelled(scheme), Icons.cancel_rounded);
     default:
       return _StatusMeta(scheme.onSurfaceVariant, Icons.circle,
           isFallback: true);
@@ -401,9 +406,11 @@ _PaymentMeta _paymentMeta(String paymentStatus, ColorScheme scheme) {
   final key = paymentStatus.toLowerCase().replaceAll(RegExp(r'[^a-z]'), '');
   switch (key) {
     case 'paid':
-      return const _PaymentMeta(Color(0xFF16A34A), Icons.check_circle_outline);
+      return const _PaymentMeta(
+          StatusColors.paymentPaid, Icons.check_circle_outline);
     case 'partial':
-      return const _PaymentMeta(Color(0xFFB8860B), Icons.incomplete_circle);
+      return const _PaymentMeta(
+          StatusColors.paymentPartial, Icons.incomplete_circle);
     case 'unpaid':
       return _PaymentMeta(scheme.onSurfaceVariant, Icons.payments_outlined);
     default:
@@ -418,9 +425,9 @@ _PaymentMeta _paymentMeta(String paymentStatus, ColorScheme scheme) {
 Color _priorityColor(String priority, ColorScheme scheme) {
   switch (priority) {
     case 'urgent':
-      return const Color(0xFFEA580C);
+      return StatusColors.urgent;
     case 'high':
-      return scheme.error;
+      return StatusColors.priorityHigh(scheme);
     default:
       return scheme.onSurfaceVariant;
   }

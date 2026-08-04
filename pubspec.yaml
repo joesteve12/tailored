@@ -14,6 +14,10 @@ dependencies:
   dio: ^5.4.3+1
   flutter_secure_storage: ^9.2.2
   go_router: ^14.2.0
+  # Adaptive navigation shell (bottom NavigationBar <-> NavigationRail). This is
+  # a maintained fork of the now-discontinued flutter_adaptive_scaffold, with an
+  # identical public API (AdaptiveScaffold / SlotLayout / Breakpoint).
+  canonical_adaptive_scaffold: ^0.3.3
   freezed_annotation: ^2.4.4
   json_annotation: ^4.9.0
   google_sign_in: ^6.2.1

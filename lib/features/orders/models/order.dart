@@ -43,6 +43,11 @@ class Order with _$Order {
   const factory Order({
     required String id,
     @JsonKey(name: 'client_id') required String clientId,
+    // The list endpoint denormalises the client's name onto each order so the
+    // list card can render it without a per-row client fetch. Nullable because
+    // single-order reads (getById) don't include it — the order detail screen
+    // gets the name from its own client tile instead.
+    @JsonKey(name: 'client_name') String? clientName,
     @JsonKey(name: 'order_number') required String orderNumber,
     required String status,
     @Default('normal') String priority,

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/models/recipient_ref.dart';
+import '../../../core/theme/app_tokens.dart';
 import '../../../core/utils/fabric_labels.dart';
 import '../../../core/utils/money.dart';
 import '../../../core/utils/order_labels.dart';
@@ -680,9 +681,9 @@ bool _isElevatedPriority(String priority) =>
 Color _priorityColor(String priority, ColorScheme scheme) {
   switch (priority) {
     case 'urgent':
-      return const Color(0xFFEA580C);
+      return StatusColors.urgent;
     case 'high':
-      return scheme.error;
+      return StatusColors.priorityHigh(scheme);
     default:
       return scheme.outline;
   }

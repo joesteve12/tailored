@@ -4,10 +4,10 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/auth/auth_state.dart';
 import '../../../core/auth/models/user.dart';
+import '../../../core/theme/app_tokens.dart';
 import '../../../core/utils/order_labels.dart';
 import '../../../core/utils/payment_labels.dart';
 import '../../../core/widgets/async_error_view.dart';
-import '../../clients/state/client_detail_notifier.dart';
 import '../state/order_list_notifier.dart';
 import '../widgets/client_picker_sheet.dart';
 
@@ -142,7 +142,7 @@ class _OrderListScreenState extends ConsumerState<OrderListScreen> {
                             final order = state.items[index];
                             return _OrderCard(
                               orderNumber: order.orderNumber,
-                              clientId: order.clientId,
+                              clientName: order.clientName,
                               dueDate: order.dueDate,
                               paymentStatus: order.paymentStatus,
                               paymentStatusLabel:
@@ -332,10 +332,10 @@ class _FilterChip extends StatelessWidget {
   }
 }
 
-class _OrderCard extends ConsumerWidget {
+class _OrderCard extends StatelessWidget {
   const _OrderCard({
     required this.orderNumber,
-    required this.clientId,
+    required this.clientName,
     required this.dueDate,
     required this.paymentStatus,
     required this.paymentStatusLabel,
@@ -346,7 +346,7 @@ class _OrderCard extends ConsumerWidget {
   });
 
   final String orderNumber;
-  final String clientId;
+  final String? clientName;
   final DateTime dueDate;
   final String paymentStatus;
   final String paymentStatusLabel;
@@ -358,16 +358,15 @@ class _OrderCard extends ConsumerWidget {
   bool get _isElevatedPriority => priority == 'high' || priority == 'urgent';
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final overdue = dueDate.isBefore(DateTime.now());
     final paymentMeta = _paymentMeta(paymentStatus, scheme);
-    // Same cached-by-id lookup the order detail screen's client tile uses —
-    // the list item only carries client_id, so the name comes from
-    // clientDetailProvider. Loading/error states degrade to hiding the row
-    // rather than showing an error the user can't act on from here.
-    final clientAsync = ref.watch(clientDetailProvider(clientId));
+    // The client name rides on each order in the list response, so the card
+    // renders it directly — no per-row client fetch. A null/blank name (older
+    // rows, or a client since removed) just hides the line.
+    final name = clientName?.trim() ?? '';
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
@@ -417,11 +416,11 @@ class _OrderCard extends ConsumerWidget {
                           _StatusPill(status: status, label: statusLabel),
                         ],
                       ),
-                      clientAsync.maybeWhen(
-                        data: (client) => Padding(
+                      if (name.isNotEmpty)
+                        Padding(
                           padding: const EdgeInsets.only(top: 2),
                           child: Text(
-                            client.name,
+                            name,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: theme.textTheme.bodySmall?.copyWith(
@@ -429,22 +428,20 @@ class _OrderCard extends ConsumerWidget {
                             ),
                           ),
                         ),
-                        orElse: () => const SizedBox.shrink(),
-                      ),
                       const SizedBox(height: 6),
                       Row(
                         children: [
                           Icon(Icons.event_outlined,
                               size: 14,
                               color: overdue
-                                  ? const Color(0xFFEA580C)
+                                  ? StatusColors.urgent
                                   : scheme.onSurfaceVariant),
                           const SizedBox(width: 4),
                           Text(
                             'Due ${_fmtDate(dueDate)}',
                             style: theme.textTheme.bodySmall?.copyWith(
                               color: overdue
-                                  ? const Color(0xFFEA580C)
+                                  ? StatusColors.urgent
                                   : scheme.onSurfaceVariant,
                               fontWeight:
                                   overdue ? FontWeight.w600 : FontWeight.w400,
@@ -562,17 +559,20 @@ _StatusMeta _statusMeta(String status, ColorScheme scheme) {
   final key = status.toLowerCase().replaceAll(RegExp(r'[^a-z]'), '');
   switch (key) {
     case 'pending':
-      return _StatusMeta(const Color(0xFFB8860B), Icons.schedule_rounded);
+      return const _StatusMeta(
+          StatusColors.orderPending, Icons.schedule_rounded);
     case 'inprogress':
-      return _StatusMeta(const Color(0xFF2563EB), Icons.autorenew_rounded);
+      return const _StatusMeta(
+          StatusColors.orderInProgress, Icons.autorenew_rounded);
     case 'onhold':
-      return _StatusMeta(const Color(0xFF7C3AED), Icons.pause_circle_rounded);
+      return const _StatusMeta(
+          StatusColors.orderOnHold, Icons.pause_circle_rounded);
     case 'delivered':
-      return _StatusMeta(
-          const Color(0xFF16A34A), Icons.check_circle_rounded);
+      return const _StatusMeta(
+          StatusColors.orderDelivered, Icons.check_circle_rounded);
     case 'cancelled':
     case 'canceled':
-      return _StatusMeta(scheme.error, Icons.cancel_rounded);
+      return _StatusMeta(StatusColors.cancelled(scheme), Icons.cancel_rounded);
     default:
       return _StatusMeta(scheme.onSurfaceVariant, Icons.circle,
           isFallback: true);
@@ -639,9 +639,11 @@ _PaymentMeta _paymentMeta(String paymentStatus, ColorScheme scheme) {
   final key = paymentStatus.toLowerCase().replaceAll(RegExp(r'[^a-z]'), '');
   switch (key) {
     case 'paid':
-      return const _PaymentMeta(Color(0xFF16A34A), Icons.check_circle_outline);
+      return const _PaymentMeta(
+          StatusColors.paymentPaid, Icons.check_circle_outline);
     case 'partial':
-      return const _PaymentMeta(Color(0xFFB8860B), Icons.incomplete_circle);
+      return const _PaymentMeta(
+          StatusColors.paymentPartial, Icons.incomplete_circle);
     case 'unpaid':
       return _PaymentMeta(scheme.onSurfaceVariant, Icons.payments_outlined);
     default:
@@ -652,9 +654,9 @@ _PaymentMeta _paymentMeta(String paymentStatus, ColorScheme scheme) {
 Color _priorityColor(String priority, ColorScheme scheme) {
   switch (priority) {
     case 'urgent':
-      return const Color(0xFFEA580C);
+      return StatusColors.urgent;
     case 'high':
-      return scheme.error;
+      return StatusColors.priorityHigh(scheme);
     default:
       return scheme.onSurfaceVariant;
   }
