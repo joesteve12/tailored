@@ -381,6 +381,8 @@ _StatusMeta _statusMeta(String status, ColorScheme scheme) {
     case 'onhold':
       return const _StatusMeta(
           StatusColors.orderOnHold, Icons.pause_circle_rounded);
+    case 'ready':
+      return const _StatusMeta(StatusColors.orderReady, Icons.task_alt_rounded);
     case 'delivered':
       return const _StatusMeta(
           StatusColors.orderDelivered, Icons.check_circle_rounded);

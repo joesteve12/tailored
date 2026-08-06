@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/auth/auth_state.dart';
 import '../data/order_repository.dart';
+import '../models/order.dart';
 import 'order_list_state.dart';
 
 class OrderListNotifier extends AsyncNotifier<OrderListState> {
@@ -14,20 +15,40 @@ class OrderListNotifier extends AsyncNotifier<OrderListState> {
     return _fetchPage(page: 1, filters: const OrderListState());
   }
 
+  /// Routes a page request to `/orders/search` when a query is active, or
+  /// `/orders` otherwise — the active filters ride along either way (search
+  /// takes the subset it supports). Keeps list and search paginating through
+  /// the exact same call sites.
+  Future<OrderListResponse> _requestPage(OrderListState filters, int page) {
+    final repo = ref.read(orderRepositoryProvider);
+    final query = filters.query?.trim() ?? '';
+    if (query.isEmpty) {
+      return repo.list(
+        orderStatus: filters.orderStatus,
+        paymentStatus: filters.paymentStatus,
+        clientId: filters.clientId,
+        priority: filters.priority,
+        dueBefore: filters.dueBefore,
+        dueAfter: filters.dueAfter,
+        sortBy: filters.sortBy,
+        page: page,
+      );
+    }
+    return repo.search(
+      query: query,
+      orderStatus: filters.orderStatus,
+      paymentStatus: filters.paymentStatus,
+      priority: filters.priority,
+      sortBy: filters.sortBy,
+      page: page,
+    );
+  }
+
   Future<OrderListState> _fetchPage({
     required int page,
     required OrderListState filters,
   }) async {
-    final response = await ref.read(orderRepositoryProvider).list(
-          orderStatus: filters.orderStatus,
-          paymentStatus: filters.paymentStatus,
-          clientId: filters.clientId,
-          priority: filters.priority,
-          dueBefore: filters.dueBefore,
-          dueAfter: filters.dueAfter,
-          sortBy: filters.sortBy,
-          page: page,
-        );
+    final response = await _requestPage(filters, page);
     return filters.copyWith(
       items: response.results,
       page: response.page,
@@ -84,6 +105,22 @@ class OrderListNotifier extends AsyncNotifier<OrderListState> {
     state = await AsyncValue.guard(() => _fetchPage(page: 1, filters: updated));
   }
 
+  /// Sets (or clears, when blank) the free-text search term and refetches
+  /// from page 1. Debouncing lives in the UI; this fires the request.
+  Future<void> setQuery(String query) async {
+    final current = state.valueOrNull ?? const OrderListState();
+    final trimmed = query.trim();
+    // No-op if the term hasn't actually changed — avoids a redundant refetch
+    // on every keystroke the debounce lets through unchanged.
+    if ((current.query ?? '') == trimmed) return;
+    final updated = current.copyWith(
+      query: trimmed.isEmpty ? null : trimmed,
+      clearQuery: trimmed.isEmpty,
+    );
+    state = const AsyncLoading<OrderListState>().copyWithPrevious(state);
+    state = await AsyncValue.guard(() => _fetchPage(page: 1, filters: updated));
+  }
+
   Future<void> loadMore() async {
     final current = state.valueOrNull;
     if (current == null || current.isLoadingMore || !current.hasMore) return;
@@ -91,16 +128,7 @@ class OrderListNotifier extends AsyncNotifier<OrderListState> {
     state = AsyncData(current.copyWith(isLoadingMore: true));
 
     try {
-      final response = await ref.read(orderRepositoryProvider).list(
-            orderStatus: current.orderStatus,
-            paymentStatus: current.paymentStatus,
-            clientId: current.clientId,
-            priority: current.priority,
-            dueBefore: current.dueBefore,
-            dueAfter: current.dueAfter,
-            sortBy: current.sortBy,
-            page: current.page + 1,
-          );
+      final response = await _requestPage(current, current.page + 1);
       state = AsyncData(
         current.copyWith(
           items: [...current.items, ...response.results],

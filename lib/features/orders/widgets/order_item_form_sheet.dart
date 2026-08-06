@@ -1,10 +1,10 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/models/recipient_ref.dart';
+import '../../../core/theme/app_tokens.dart';
 import '../../../core/utils/fabric_labels.dart';
+import '../../../core/utils/money.dart';
 import '../../../core/utils/pick_image.dart';
 import '../data/order_repository.dart';
 import '../models/fabric.dart';
@@ -15,6 +15,24 @@ import 'recipient_picker.dart';
 
 import '../../../core/widgets/feedback.dart';
 import '../../../core/widgets/image_viewer.dart';
+import '../../../core/widgets/section_label.dart';
+
+/// Common garment types offered as quick-fill chips above the free-text field.
+/// Typing "Kaftan" on every order invites "kaftan", "Kaftan ", "Caftan" — three
+/// labels the owner then can't group. The field stays free text (bespoke work
+/// doesn't fit a fixed list); the chips just make the common case one tap.
+const List<String> _commonGarments = [
+  'Kaftan',
+  'Agbada',
+  'Senator',
+  'Suit',
+  'Shirt',
+  'Trousers',
+  'Gown',
+  'Dress',
+  'Skirt',
+  'Blouse',
+];
 /// A single fabric being drafted on a not-yet-created item. Holds its own
 /// controllers and (optionally) a staged image. Because the item doesn't exist
 /// yet, the image is uploaded to the staging endpoint here and the URL rides
@@ -91,6 +109,22 @@ class _OrderItemFormSheetState extends ConsumerState<OrderItemFormSheet> {
     super.initState();
     _recipient = clientRecipient(widget.clientId);
     _repo = ref.read(orderRepositoryProvider);
+    // Keep the live line-total preview in step with the price/quantity fields.
+    _priceController.addListener(_onLineChanged);
+    _quantityController.addListener(_onLineChanged);
+  }
+
+  void _onLineChanged() {
+    if (mounted) setState(() {});
+  }
+
+  /// Price × quantity for the in-sheet preview, or null until a valid price is
+  /// entered (so the preview stays hidden rather than reading ₦0).
+  double? get _lineTotal {
+    final price = double.tryParse(_priceController.text.trim());
+    if (price == null || price <= 0) return null;
+    final qty = int.tryParse(_quantityController.text.trim()) ?? 1;
+    return price * qty;
   }
 
   @override
@@ -110,6 +144,8 @@ class _OrderItemFormSheetState extends ConsumerState<OrderItemFormSheet> {
     for (final f in _fabrics) {
       f.disposeControllers();
     }
+    _priceController.removeListener(_onLineChanged);
+    _quantityController.removeListener(_onLineChanged);
     _garmentController.dispose();
     _descriptionController.dispose();
     _quantityController.dispose();
@@ -204,61 +240,156 @@ class _OrderItemFormSheetState extends ConsumerState<OrderItemFormSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final tokens = context.appTokens;
+    final lineTotal = _lineTotal;
     return Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
       child: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
         child: Form(
           key: _formKey,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text('Add outfit', style: Theme.of(context).textTheme.titleLarge),
-              const SizedBox(height: 16),
+              // Grabber + header, so the sheet reads as a modal you can pull
+              // down or dismiss with the X.
+              Center(
+                child: Container(
+                  width: 36,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 14),
+                  decoration: BoxDecoration(
+                    color: scheme.onSurfaceVariant.withValues(alpha: 0.4),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              Row(
+                children: [
+                  Text(
+                    'Add outfit',
+                    style: TextStyle(
+                      fontFamily: tokens.fontDisplay,
+                      fontFamilyFallback: tokens.fontDisplayFallback,
+                      fontSize: 22,
+                      color: scheme.onSurface,
+                    ),
+                  ),
+                  const Spacer(),
+                  IconButton(
+                    visualDensity: VisualDensity.compact,
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+
+              // ── Garment ──────────────────────────────────────────────────
+              const SectionLabel('Garment'),
+              const SizedBox(height: 10),
               TextFormField(
                 controller: _garmentController,
-                decoration: const InputDecoration(labelText: 'Garment type'),
+                decoration: const InputDecoration(
+                  hintText: 'e.g. Three-piece suit',
+                ),
                 textCapitalization: TextCapitalization.words,
                 validator: (v) =>
                     (v == null || v.trim().isEmpty) ? 'Required' : null,
               ),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final g in _commonGarments)
+                    _GarmentChip(
+                      label: g,
+                      selected: _garmentController.text.trim() == g,
+                      onTap: () {
+                        setState(() {
+                          _garmentController.text = g;
+                          _garmentController.selection =
+                              TextSelection.collapsed(offset: g.length);
+                        });
+                      },
+                    ),
+                ],
+              ),
               const SizedBox(height: 12),
               TextFormField(
                 controller: _descriptionController,
-                decoration:
-                    const InputDecoration(labelText: 'Description (optional)'),
+                decoration: const InputDecoration(
+                  hintText: 'Short description (optional)',
+                ),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 22),
+
+              // ── Quantity + unit price ───────────────────────────────────
               Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(
-                    child: TextFormField(
-                      controller: _quantityController,
-                      decoration: const InputDecoration(labelText: 'Quantity'),
-                      keyboardType: TextInputType.number,
-                      validator: (v) {
-                        final n = int.tryParse(v?.trim() ?? '');
-                        return (n == null || n < 1) ? 'Invalid' : null;
-                      },
-                    ),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const SectionLabel('Qty'),
+                      const SizedBox(height: 10),
+                      _QtyStepper(controller: _quantityController),
+                    ],
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: 20),
                   Expanded(
-                    child: TextFormField(
-                      controller: _priceController,
-                      decoration: const InputDecoration(labelText: 'Unit price'),
-                      keyboardType:
-                          const TextInputType.numberWithOptions(decimal: true),
-                      validator: (v) {
-                        final n = double.tryParse(v?.trim() ?? '');
-                        // Backend requires unit_price > 0.
-                        return (n == null || n <= 0) ? 'Invalid' : null;
-                      },
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const SectionLabel('Unit price ($kNairaSign)'),
+                        const SizedBox(height: 10),
+                        TextFormField(
+                          controller: _priceController,
+                          decoration: const InputDecoration(
+                            prefixText: '$kNairaSign ',
+                            hintText: '0.00',
+                          ),
+                          keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true),
+                          validator: (v) {
+                            final n = double.tryParse(v?.trim() ?? '');
+                            // Backend requires unit_price > 0.
+                            return (n == null || n <= 0) ? 'Invalid' : null;
+                          },
+                        ),
+                      ],
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 20),
+              if (lineTotal != null) ...[
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Text(
+                      'Line total',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: scheme.onSurfaceVariant,
+                          ),
+                    ),
+                    const Spacer(),
+                    Text(
+                      formatNaira(lineTotal),
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                            color: scheme.onSurface,
+                            fontWeight: FontWeight.w700,
+                          ),
+                    ),
+                  ],
+                ),
+              ],
+              const SizedBox(height: 22),
+
+              // ── Fabrics ─────────────────────────────────────────────────
+              const SectionLabel('Fabrics'),
+              const SizedBox(height: 10),
               _FabricsEditor(
                 fabrics: _fabrics,
                 onAdd: _addFabricDraft,
@@ -268,7 +399,9 @@ class _OrderItemFormSheetState extends ConsumerState<OrderItemFormSheet> {
                 onUnitChanged: (draft, unit) =>
                     setState(() => draft.unit = unit),
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 22),
+
+              // ── Style references ────────────────────────────────────────
               _StyleRefsRow(
                 staged: _styleRefs,
                 uploading: _uploadingStyle,
@@ -279,13 +412,11 @@ class _OrderItemFormSheetState extends ConsumerState<OrderItemFormSheet> {
                   _repo.deleteStagedFile(removed.fileId);
                 },
               ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _notesController,
-                decoration: const InputDecoration(labelText: 'Notes (optional)'),
-                maxLines: 2,
-              ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 22),
+
+              // ── Recipient + measurements ────────────────────────────────
+              const SectionLabel('Recipient'),
+              const SizedBox(height: 10),
               RecipientPicker(
                 clientId: widget.clientId,
                 selected: _recipient,
@@ -302,10 +433,26 @@ class _OrderItemFormSheetState extends ConsumerState<OrderItemFormSheet> {
                 selectedSetId: _measurementSetId,
                 onChanged: (id) => setState(() => _measurementSetId = id),
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 22),
+
+              // ── Notes ───────────────────────────────────────────────────
+              const SectionLabel('Notes'),
+              const SizedBox(height: 10),
+              TextFormField(
+                controller: _notesController,
+                minLines: 3,
+                maxLines: 5,
+                decoration: const InputDecoration(
+                  hintText: 'Style details, measurements, references…',
+                ),
+              ),
+              const SizedBox(height: 22),
               FilledButton(
                 onPressed: _anyUploading ? null : _submit,
-                child: const Text('Add'),
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(52),
+                ),
+                child: const Text('Add outfit'),
               ),
             ],
           ),
@@ -338,15 +485,10 @@ class _FabricsEditor extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // The 'Fabrics' heading is supplied by the SectionLabel at the call site.
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Align(
-          alignment: Alignment.centerLeft,
-          child: Text('Fabrics',
-              style: Theme.of(context).textTheme.titleSmall),
-        ),
-        const SizedBox(height: 4),
         if (fabrics.isEmpty)
           Padding(
             padding: const EdgeInsets.only(bottom: 8),
@@ -560,19 +702,17 @@ class _StyleRefsRow extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            const Text('Style references'),
-            const SizedBox(width: 8),
-            if (uploading)
-              const SizedBox(
-                height: 14,
-                width: 14,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
-          ],
+        SectionLabel(
+          'Style references',
+          trailing: uploading
+              ? const SizedBox(
+                  height: 14,
+                  width: 14,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : null,
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 10),
         Wrap(
           spacing: 8,
           runSpacing: 8,
@@ -633,12 +773,147 @@ class _StyleRefsRow extends StatelessWidget {
                   border:
                       Border.all(color: Theme.of(context).colorScheme.outline),
                 ),
-                child: const Icon(Icons.add),
+                child: Icon(Icons.add,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant),
               ),
             ),
           ],
         ),
       ],
+    );
+  }
+}
+
+/// A quick-fill chip for a common garment type. Selected when its label
+/// currently matches the free-text field, so tapping through the list reads
+/// as a single-choice control even though the field stays editable.
+class _GarmentChip extends StatelessWidget {
+  const _GarmentChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final tokens = context.appTokens;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(tokens.radiusMd),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 120),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: selected
+              ? scheme.primary.withValues(alpha: 0.12)
+              : tokens.inputBackground,
+          borderRadius: BorderRadius.circular(tokens.radiusMd),
+          border: Border.all(
+            color: selected ? scheme.primary : scheme.outline,
+            width: selected ? 1.6 : 1,
+          ),
+        ),
+        child: Text(
+          label,
+          style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                color: selected ? scheme.onSurface : scheme.onSurfaceVariant,
+                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+              ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A −/value/+ quantity stepper backed by a text field so the value can still
+/// be typed (large runs), while the buttons cover the common ±1 case. Clamps
+/// at 1 — the backend rejects a zero quantity.
+class _QtyStepper extends StatelessWidget {
+  const _QtyStepper({required this.controller});
+
+  final TextEditingController controller;
+
+  int get _current {
+    final n = int.tryParse(controller.text.trim());
+    return (n == null || n < 1) ? 1 : n;
+  }
+
+  void _set(int value) {
+    final v = value < 1 ? 1 : value;
+    controller.text = '$v';
+    controller.selection =
+        TextSelection.collapsed(offset: controller.text.length);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final tokens = context.appTokens;
+    return Container(
+      height: 52,
+      decoration: BoxDecoration(
+        color: tokens.inputBackground,
+        borderRadius: BorderRadius.circular(tokens.radiusMd),
+        border: Border.all(color: scheme.outline),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _StepButton(
+            icon: Icons.remove,
+            onTap: () => _set(_current - 1),
+          ),
+          SizedBox(
+            width: 44,
+            child: TextField(
+              controller: controller,
+              textAlign: TextAlign.center,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                isDense: true,
+                filled: false,
+                border: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                focusedBorder: InputBorder.none,
+                contentPadding: EdgeInsets.zero,
+              ),
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    color: scheme.onSurface,
+                    fontWeight: FontWeight.w700,
+                  ),
+            ),
+          ),
+          _StepButton(
+            icon: Icons.add,
+            onTap: () => _set(_current + 1),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StepButton extends StatelessWidget {
+  const _StepButton({required this.icon, required this.onTap});
+
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return InkWell(
+      onTap: onTap,
+      customBorder: const CircleBorder(),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Icon(icon, size: 20, color: scheme.primary),
+      ),
     );
   }
 }

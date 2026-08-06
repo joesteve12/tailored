@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -9,6 +11,7 @@ import '../../../core/utils/order_labels.dart';
 import '../../../core/utils/payment_labels.dart';
 import '../../../core/widgets/async_error_view.dart';
 import '../state/order_list_notifier.dart';
+import '../state/order_list_state.dart';
 import '../widgets/client_picker_sheet.dart';
 
 import '../../../core/widgets/feedback.dart';
@@ -65,14 +68,57 @@ class _OrderListScreenState extends ConsumerState<OrderListScreen> {
 
     final listState = ref.watch(orderListProvider);
     final scheme = Theme.of(context).colorScheme;
+    // Drives the filter icon's badge and the sheet even while a refetch is in
+    // flight — copyWithPrevious keeps the last state visible during loading.
+    final currentState = listState.valueOrNull;
+    final activeCount = currentState == null
+        ? 0
+        : (currentState.orderStatus != null ? 1 : 0) +
+            (currentState.priority != null ? 1 : 0);
 
     return Scaffold(
       backgroundColor: scheme.surface,
       appBar: AppBar(
-        title: const Text('Orders'),
+        titleSpacing: 16,
         scrolledUnderElevation: 0,
         backgroundColor: scheme.surface,
         surfaceTintColor: Colors.transparent,
+        // Title, search field and filter icon share one row; the search
+        // field expands so it and the icon sit against the right edge.
+        title: Row(
+          children: [
+            Text(
+              'Orders',
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+            const SizedBox(width: 16),
+            // The gap between the title and the search lives here: Expanded
+            // eats the slack, and Align pins a width-capped field to the
+            // right of it — so on a wide screen the field + icon sit on the
+            // right, while on a phone the field just shrinks to fit instead
+            // of overflowing (the 240 cap keeps it from stretching).
+            Expanded(
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 240),
+                  child: const _OrderSearchField(),
+                ),
+              ),
+            ),
+            const SizedBox(width: 4),
+            _FilterIconButton(
+              activeCount: activeCount,
+              onOpen: currentState == null
+                  ? null
+                  : () => _openFilters(
+                        context,
+                        currentState,
+                        _orderStatusOptions(currentState),
+                      ),
+            ),
+          ],
+        ),
       ),
       body: listState.when(
         loading: () => const Center(child: CircularProgressIndicator()),
@@ -81,83 +127,41 @@ class _OrderListScreenState extends ConsumerState<OrderListScreen> {
           onRetry: () => ref.read(orderListProvider.notifier).refresh(),
         ),
         data: (state) {
-          final statusOptions = {
-            for (final order in state.items) order.status,
-          }.toList()
-            ..sort();
+          if (state.items.isEmpty) {
+            return _EmptyState(
+              isFiltered: state.query != null || state.hasActiveFilters,
+              onRefresh: () => ref.read(orderListProvider.notifier).refresh(),
+            );
+          }
+          return RefreshIndicator(
+            onRefresh: () => ref.read(orderListProvider.notifier).refresh(),
+            child: ListView.builder(
+              controller: _scrollController,
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.fromLTRB(12, 12, 12, 96),
+              itemCount: state.items.length + (state.hasMore ? 1 : 0),
+              itemBuilder: (context, index) {
+                if (index >= state.items.length) {
+                  return const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 20),
+                    child: Center(child: CircularProgressIndicator()),
+                  );
+                }
 
-          return Column(
-            children: [
-              _FilterSection(
-                statusOptions: statusOptions,
-                selectedStatus: state.orderStatus,
-                selectedPriority: state.priority,
-                onStatusSelected: (status) {
-                  if (status == null) {
-                    ref
-                        .read(orderListProvider.notifier)
-                        .setFilters(clearOrderStatus: true);
-                  } else {
-                    ref
-                        .read(orderListProvider.notifier)
-                        .setFilters(orderStatus: status);
-                  }
-                },
-                onPrioritySelected: (priority) {
-                  if (priority == null) {
-                    ref
-                        .read(orderListProvider.notifier)
-                        .setFilters(clearPriority: true);
-                  } else {
-                    ref
-                        .read(orderListProvider.notifier)
-                        .setFilters(priority: priority);
-                  }
-                },
-              ),
-              Expanded(
-                child: state.items.isEmpty
-                    ? _EmptyState(
-                        onRefresh: () =>
-                            ref.read(orderListProvider.notifier).refresh(),
-                      )
-                    : RefreshIndicator(
-                        onRefresh: () =>
-                            ref.read(orderListProvider.notifier).refresh(),
-                        child: ListView.builder(
-                          controller: _scrollController,
-                          physics: const AlwaysScrollableScrollPhysics(),
-                          padding: const EdgeInsets.fromLTRB(12, 12, 12, 96),
-                          itemCount:
-                              state.items.length + (state.hasMore ? 1 : 0),
-                          itemBuilder: (context, index) {
-                            if (index >= state.items.length) {
-                              return const Padding(
-                                padding: EdgeInsets.symmetric(vertical: 20),
-                                child:
-                                    Center(child: CircularProgressIndicator()),
-                              );
-                            }
-
-                            final order = state.items[index];
-                            return _OrderCard(
-                              orderNumber: order.orderNumber,
-                              clientName: order.clientName,
-                              dueDate: order.dueDate,
-                              paymentStatus: order.paymentStatus,
-                              paymentStatusLabel:
-                                  paymentStatusLabel(order.paymentStatus),
-                              status: order.status,
-                              statusLabel: orderStatusLabel(order.status),
-                              priority: order.priority,
-                              onTap: () =>
-                                  context.push('/orders/${order.id}'),
-                            );
-                          },
-                        ),
-                      ),
-              ),
-            ],
+                final order = state.items[index];
+                return _OrderCard(
+                  orderNumber: order.orderNumber,
+                  clientName: order.clientName,
+                  dueDate: order.dueDate,
+                  paymentStatus: order.paymentStatus,
+                  paymentStatusLabel: paymentStatusLabel(order.paymentStatus),
+                  status: order.status,
+                  statusLabel: orderStatusLabel(order.status),
+                  priority: order.priority,
+                  onTap: () => context.push('/orders/${order.id}'),
+                );
+              },
+            ),
           );
         },
       ),
@@ -179,96 +183,329 @@ class _OrderListScreenState extends ConsumerState<OrderListScreen> {
       context.push('/orders/new', extra: clientId);
     }
   }
+
+  Future<void> _openFilters(
+    BuildContext context,
+    OrderListState state,
+    List<String> statusOptions,
+  ) async {
+    final result = await showModalBottomSheet<_OrderFilterResult>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (context) => _OrderFilterSheet(
+        statusOptions: statusOptions,
+        selectedStatus: state.orderStatus,
+        selectedPriority: state.priority,
+        sortBy: state.sortBy,
+      ),
+    );
+    if (result == null || !mounted) return;
+    // Null on any field means "cleared"; the matching clear* flag makes that
+    // explicit so it's not confused with "left untouched".
+    ref.read(orderListProvider.notifier).setFilters(
+          orderStatus: result.status,
+          clearOrderStatus: result.status == null,
+          priority: result.priority,
+          clearPriority: result.priority == null,
+          sortBy: result.sortBy,
+          clearSortBy: result.sortBy == null,
+        );
+  }
 }
 
-/// Both filter rows, grouped in one lightly-tinted band so they read as a
-/// single "filters" control surface rather than floating chip strips.
-class _FilterSection extends StatelessWidget {
-  const _FilterSection({
-    required this.statusOptions,
-    required this.selectedStatus,
-    required this.selectedPriority,
-    required this.onStatusSelected,
-    required this.onPrioritySelected,
-  });
+/// The statuses present in the currently-loaded orders, sorted. Drives the
+/// status chips in [_OrderFilterSheet] — same don't-guess-the-vocabulary
+/// stance as before: show what the data actually contains.
+List<String> _orderStatusOptions(OrderListState state) =>
+    {for (final order in state.items) order.status}.toList()..sort();
 
-  final List<String> statusOptions;
-  final String? selectedStatus;
-  final String? selectedPriority;
-  final ValueChanged<String?> onStatusSelected;
-  final ValueChanged<String?> onPrioritySelected;
+/// Priorities offered as filters — only the elevated ones. low/normal aren't
+/// worth a filter chip (an order being "normal" isn't something you hunt
+/// for), so filtering is limited to high/urgent. The full [kPriorities] list
+/// still drives the priority *selector* on the order form.
+const List<String> _priorityFilterOptions = ['high', 'urgent'];
+
+/// The compacted filter control: an icon-only button that opens
+/// [_OrderFilterSheet]. A count badge appears when status/priority filters
+/// are active, and the icon tints primary. `onOpen` is null until the first
+/// load lands (nothing to filter yet).
+class _FilterIconButton extends StatelessWidget {
+  const _FilterIconButton({required this.activeCount, required this.onOpen});
+
+  final int activeCount;
+  final VoidCallback? onOpen;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-
-    return Container(
-      decoration: BoxDecoration(
-        color: scheme.surfaceContainerLow,
-        border: Border(bottom: BorderSide(color: scheme.outlineVariant)),
-      ),
-      padding: const EdgeInsets.only(top: 10, bottom: 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (statusOptions.isNotEmpty) ...[
-            _FilterRow(
-              children: [
-                _FilterChip(
-                  label: 'All',
-                  selected: selectedStatus == null,
-                  onTap: () => onStatusSelected(null),
-                ),
-                for (final status in statusOptions)
-                  _FilterChip(
-                    label: orderStatusLabel(status),
-                    selected: selectedStatus == status,
-                    onTap: () => onStatusSelected(status),
-                    dotColor: _statusMeta(status, scheme).color,
-                  ),
-              ],
-            ),
-            const SizedBox(height: 8),
-          ],
-          _FilterRow(
-            children: [
-              _FilterChip(
-                label: 'Any priority',
-                selected: selectedPriority == null,
-                onTap: () => onPrioritySelected(null),
-              ),
-              for (final p in kPriorities)
-                _FilterChip(
-                  label: priorityLabel(p),
-                  selected: selectedPriority == p,
-                  onTap: () => onPrioritySelected(p),
-                  dotColor: _priorityColor(p, scheme),
-                ),
-            ],
-          ),
-        ],
+    final active = activeCount > 0;
+    return IconButton(
+      tooltip: 'Filters & sort',
+      onPressed: onOpen,
+      icon: Badge.count(
+        count: activeCount,
+        isLabelVisible: active,
+        child: Icon(
+          Icons.tune,
+          color: active ? scheme.primary : scheme.onSurfaceVariant,
+        ),
       ),
     );
   }
 }
 
-class _FilterRow extends StatelessWidget {
-  const _FilterRow({required this.children});
+/// Rounded search field that lives in the app bar. Debounces keystrokes
+/// (400ms) before hitting `/orders/search` via the notifier, matching the
+/// client-picker's debounce feel, and shows a clear button once there's
+/// text.
+class _OrderSearchField extends ConsumerStatefulWidget {
+  const _OrderSearchField();
 
-  final List<Widget> children;
+  @override
+  ConsumerState<_OrderSearchField> createState() => _OrderSearchFieldState();
+}
+
+class _OrderSearchFieldState extends ConsumerState<_OrderSearchField> {
+  final _controller = TextEditingController();
+  Timer? _debounce;
+  bool _hasText = false;
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _submit(String value) {
+    ref.read(orderListProvider.notifier).setQuery(value).catchError((_) {
+      if (!mounted) return;
+      showErrorMessage(context, 'Search failed');
+    });
+  }
+
+  void _onChanged(String value) {
+    setState(() => _hasText = value.isNotEmpty);
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 400), () => _submit(value));
+  }
+
+  void _clear() {
+    _debounce?.cancel();
+    _controller.clear();
+    setState(() => _hasText = false);
+    _submit('');
+  }
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return SizedBox(
-      height: 36,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        itemCount: children.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 8),
-        itemBuilder: (context, index) => children[index],
+      height: 40,
+      child: TextField(
+        controller: _controller,
+        textInputAction: TextInputAction.search,
+        style: Theme.of(context).textTheme.bodyMedium,
+        onChanged: _onChanged,
+        onSubmitted: (value) {
+          _debounce?.cancel();
+          _submit(value);
+        },
+        decoration: InputDecoration(
+          isDense: true,
+          hintText: 'Search orders',
+          prefixIcon: Icon(Icons.search, size: 20, color: scheme.onSurfaceVariant),
+          prefixIconConstraints:
+              const BoxConstraints(minWidth: 38, minHeight: 40),
+          suffixIcon: _hasText
+              ? IconButton(
+                  icon: const Icon(Icons.close, size: 18),
+                  splashRadius: 18,
+                  visualDensity: VisualDensity.compact,
+                  onPressed: _clear,
+                )
+              : null,
+          suffixIconConstraints:
+              const BoxConstraints(minWidth: 36, minHeight: 40),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+        ),
       ),
+    );
+  }
+}
+
+/// What [_OrderFilterSheet] hands back on Apply. A null field means that
+/// filter is cleared (for [sortBy], null means the default "Newest first"
+/// ordering, i.e. no `sort_by` param).
+class _OrderFilterResult {
+  const _OrderFilterResult({this.status, this.priority, this.sortBy});
+
+  final String? status;
+  final String? priority;
+  final String? sortBy;
+}
+
+/// The bottom sheet holding the status / priority / sort controls that used
+/// to live as two always-visible chip rows. Edits a local draft and only
+/// commits on Apply, so tapping around doesn't refetch on every change the
+/// way the inline chips did.
+class _OrderFilterSheet extends StatefulWidget {
+  const _OrderFilterSheet({
+    required this.statusOptions,
+    required this.selectedStatus,
+    required this.selectedPriority,
+    required this.sortBy,
+  });
+
+  final List<String> statusOptions;
+  final String? selectedStatus;
+  final String? selectedPriority;
+  final String? sortBy;
+
+  @override
+  State<_OrderFilterSheet> createState() => _OrderFilterSheetState();
+}
+
+class _OrderFilterSheetState extends State<_OrderFilterSheet> {
+  late String? _status = widget.selectedStatus;
+  late String? _priority = widget.selectedPriority;
+  // Normalized so the default sort is always represented as null, matching
+  // what the state/endpoint expect ("no sort_by param").
+  late String? _sortBy =
+      widget.sortBy == 'created_at' ? null : widget.sortBy;
+
+  bool get _isDirty => _status != null || _priority != null || _sortBy != null;
+
+  void _reset() => setState(() {
+        _status = null;
+        _priority = null;
+        _sortBy = null;
+      });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return SafeArea(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Filters & sort',
+                    style: theme.textTheme.titleMedium,
+                  ),
+                ),
+                TextButton(
+                  onPressed: _isDirty ? _reset : null,
+                  child: const Text('Reset'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            if (widget.statusOptions.isNotEmpty) ...[
+              const _SheetGroupLabel('Status'),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  _FilterChip(
+                    label: 'All',
+                    selected: _status == null,
+                    onTap: () => setState(() => _status = null),
+                  ),
+                  for (final status in widget.statusOptions)
+                    _FilterChip(
+                      label: orderStatusLabel(status),
+                      selected: _status == status,
+                      onTap: () => setState(() => _status = status),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 20),
+            ],
+            const _SheetGroupLabel('Priority'),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _FilterChip(
+                  label: 'Any priority',
+                  selected: _priority == null,
+                  onTap: () => setState(() => _priority = null),
+                ),
+                for (final p in _priorityFilterOptions)
+                  _FilterChip(
+                    label: priorityLabel(p),
+                    selected: _priority == p,
+                    onTap: () => setState(() => _priority = p),
+                    dotColor: _priorityColor(p, scheme),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            const _SheetGroupLabel('Sort by'),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final opt in kOrderSortOptions)
+                  _FilterChip(
+                    label: orderSortLabel(opt),
+                    selected: (_sortBy ?? 'created_at') == opt,
+                    onTap: () => setState(
+                      () => _sortBy = opt == 'created_at' ? null : opt,
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 24),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: () => Navigator.pop(
+                  context,
+                  _OrderFilterResult(
+                    status: _status,
+                    priority: _priority,
+                    sortBy: _sortBy,
+                  ),
+                ),
+                child: const Text('Apply'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SheetGroupLabel extends StatelessWidget {
+  const _SheetGroupLabel(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Text(
+      text.toUpperCase(),
+      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+            color: scheme.onSurfaceVariant,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0.6,
+          ),
     );
   }
 }
@@ -567,6 +804,8 @@ _StatusMeta _statusMeta(String status, ColorScheme scheme) {
     case 'onhold':
       return const _StatusMeta(
           StatusColors.orderOnHold, Icons.pause_circle_rounded);
+    case 'ready':
+      return const _StatusMeta(StatusColors.orderReady, Icons.task_alt_rounded);
     case 'delivered':
       return const _StatusMeta(
           StatusColors.orderDelivered, Icons.check_circle_rounded);
@@ -580,9 +819,13 @@ _StatusMeta _statusMeta(String status, ColorScheme scheme) {
 }
 
 class _EmptyState extends StatelessWidget {
-  const _EmptyState({required this.onRefresh});
+  const _EmptyState({required this.onRefresh, this.isFiltered = false});
 
   final Future<void> Function() onRefresh;
+
+  /// When a search term or filter is active, an empty list means "nothing
+  /// matched" rather than "no orders exist" — the copy switches accordingly.
+  final bool isFiltered;
 
   @override
   Widget build(BuildContext context) {
@@ -598,16 +841,23 @@ class _EmptyState extends StatelessWidget {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.inventory_2_outlined,
-                      size: 48, color: scheme.outlineVariant),
+                  Icon(
+                    isFiltered
+                        ? Icons.search_off_outlined
+                        : Icons.inventory_2_outlined,
+                    size: 48,
+                    color: scheme.outlineVariant,
+                  ),
                   const SizedBox(height: 12),
                   Text(
-                    'No orders yet',
+                    isFiltered ? 'No matching orders' : 'No orders yet',
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    "Create one from a client's page.",
+                    isFiltered
+                        ? 'Try a different search or clear the filters.'
+                        : "Create one from a client's page.",
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                           color: scheme.onSurfaceVariant,
                         ),

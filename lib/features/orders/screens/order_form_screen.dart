@@ -2,16 +2,18 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../core/utils/order_labels.dart';
+import '../../../core/theme/app_tokens.dart';
+import '../../../core/utils/money.dart';
 import '../../../core/utils/pick_image.dart';
 import '../data/order_repository.dart';
 import '../models/order_item.dart';
 import '../state/order_list_notifier.dart';
+import '../widgets/order_form_fields.dart';
 import '../widgets/order_item_form_sheet.dart';
 
 import '../../../core/widgets/feedback.dart';
 import '../../../core/widgets/image_viewer.dart';
-import '../../../core/utils/errors.dart';
+import '../../../core/widgets/section_label.dart';
 /// Create-only. Editing an existing order's details (due date, notes,
 /// priority, discount) and its items happens on [OrderDetailScreen] now that
 /// the backend supports post-creation item add/edit/delete — so this screen
@@ -57,6 +59,13 @@ class _OrderFormScreenState extends ConsumerState<OrderFormScreen> {
   void initState() {
     super.initState();
     _repo = ref.read(orderRepositoryProvider);
+    // Keep the live totals card in step with the discount value as it's typed
+    // (type changes and item edits already setState).
+    _discountController.addListener(_onDiscountChanged);
+  }
+
+  void _onDiscountChanged() {
+    if (mounted) setState(() {});
   }
 
   @override
@@ -74,10 +83,31 @@ class _OrderFormScreenState extends ConsumerState<OrderFormScreen> {
         }
       }
     }
+    _discountController.removeListener(_onDiscountChanged);
     _notesController.dispose();
     _discountController.dispose();
     super.dispose();
   }
+
+  // ── Local money preview ──────────────────────────────────────────────────
+  // The backend recomputes the authoritative subtotal/discount/total on
+  // create; these mirror that arithmetic so the owner sees the running figure
+  // while building the order, not a blank until save.
+  double get _subtotal =>
+      _items.fold(0.0, (sum, it) => sum + it.unitPrice * it.quantity);
+
+  double get _discountAmount {
+    if (_discountType == 'none') return 0;
+    final value = double.tryParse(_discountController.text.trim()) ?? 0;
+    if (value <= 0) return 0;
+    if (_discountType == 'percentage') {
+      return _subtotal * (value.clamp(0, 100) / 100);
+    }
+    // Fixed amount can't take the total below zero.
+    return value.clamp(0, _subtotal).toDouble();
+  }
+
+  double get _total => (_subtotal - _discountAmount).clamp(0, double.infinity);
 
   Future<void> _pickDueDate() async {
     final picked = await showDatePicker(
@@ -128,8 +158,10 @@ class _OrderFormScreenState extends ConsumerState<OrderFormScreen> {
         ? 0.0
         : (double.tryParse(_discountController.text.trim()) ?? 0.0);
     if (_discountType != 'none' && discountValue <= 0) {
-      if (mounted) showErrorMessage(context, 'Enter a discount value, or pick '
-          '"No discount"');
+      if (mounted) {
+        showErrorMessage(
+            context, 'Enter a discount value, or pick "No discount"');
+      }
       return;
     }
 
@@ -161,8 +193,17 @@ class _OrderFormScreenState extends ConsumerState<OrderFormScreen> {
     }
   }
 
+  void _removeItemAt(int i) {
+    final removed = _items[i];
+    setState(() => _items.removeAt(i));
+    for (final id in removed.stagedFileIds) {
+      _repo.deleteStagedFile(id);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final busy = _isSubmitting || _uploadingMedia;
     return Scaffold(
       appBar: AppBar(title: const Text('New order')),
       body: SafeArea(
@@ -170,37 +211,50 @@ class _OrderFormScreenState extends ConsumerState<OrderFormScreen> {
           children: [
             Expanded(
               child: ListView(
-                padding: const EdgeInsets.all(24),
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
                 children: [
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('Due date'),
-                    subtitle: Text(_fmtDate(_dueDate)),
-                    trailing: const Icon(Icons.calendar_today, size: 18),
-                    onTap: _pickDueDate,
+                  // ── Outfits ──────────────────────────────────────────────
+                  SectionLabel(
+                    'Outfit items',
+                    trailing: _items.isEmpty
+                        ? null
+                        : _CountBadge(_items.length),
                   ),
-                  const SizedBox(height: 8),
-                  DropdownButtonFormField<String>(
+                  const SizedBox(height: 10),
+                  if (_items.isEmpty)
+                    const _EmptyOutfits()
+                  else
+                    for (var i = 0; i < _items.length; i++)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: _OutfitCard(
+                          item: _items[i],
+                          onRemove: () => _removeItemAt(i),
+                        ),
+                      ),
+                  const SizedBox(height: 4),
+                  _AddOutfitButton(onTap: _addItem),
+
+                  const SizedBox(height: 26),
+                  // ── Due date ─────────────────────────────────────────────
+                  const SectionLabel('Due date'),
+                  const SizedBox(height: 10),
+                  DueDateTile(date: _dueDate, onTap: _pickDueDate),
+
+                  const SizedBox(height: 26),
+                  // ── Priority ─────────────────────────────────────────────
+                  const SectionLabel('Priority'),
+                  const SizedBox(height: 10),
+                  PrioritySelector(
                     value: _priority,
-                    decoration: const InputDecoration(labelText: 'Priority'),
-                    items: [
-                      for (final p in kPriorities)
-                        DropdownMenuItem(
-                            value: p, child: Text(priorityLabel(p))),
-                    ],
-                    onChanged: (v) {
-                      if (v != null) setState(() => _priority = v);
-                    },
+                    onChanged: (p) => setState(() => _priority = p),
                   ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: _notesController,
-                    decoration:
-                        const InputDecoration(labelText: 'Notes (optional)'),
-                    maxLines: 3,
-                  ),
-                  const SizedBox(height: 24),
-                  _DiscountFields(
+
+                  const SizedBox(height: 26),
+                  // ── Discount ─────────────────────────────────────────────
+                  const SectionLabel('Discount'),
+                  const SizedBox(height: 10),
+                  DiscountField(
                     type: _discountType,
                     valueController: _discountController,
                     onTypeChanged: (v) => setState(() {
@@ -208,7 +262,17 @@ class _OrderFormScreenState extends ConsumerState<OrderFormScreen> {
                       if (v == 'none') _discountController.text = '0';
                     }),
                   ),
-                  const SizedBox(height: 24),
+
+                  const SizedBox(height: 26),
+                  // ── Order media ──────────────────────────────────────────
+                  SectionLabel(
+                    'Order media',
+                    trailing: _MediaCount(
+                      count: _media.length,
+                      uploading: _uploadingMedia,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
                   _MediaStagingStrip(
                     staged: _media,
                     uploading: _uploadingMedia,
@@ -219,59 +283,37 @@ class _OrderFormScreenState extends ConsumerState<OrderFormScreen> {
                       _repo.deleteStagedFile(removed.fileId);
                     },
                   ),
-                  const SizedBox(height: 24),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text('Outfits',
-                          style: Theme.of(context).textTheme.titleMedium),
-                      TextButton.icon(
-                        onPressed: _addItem,
-                        icon: const Icon(Icons.add),
-                        label: const Text('Add outfit'),
-                      ),
-                    ],
+
+                  const SizedBox(height: 26),
+                  // ── Notes ────────────────────────────────────────────────
+                  const SectionLabel('Notes'),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: _notesController,
+                    minLines: 3,
+                    maxLines: 5,
+                    decoration: const InputDecoration(
+                      hintText:
+                          'Client preferences, reminders, delivery details…',
+                    ),
                   ),
-                  if (_items.isEmpty)
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 12),
-                      child: Text('No outfits added yet'),
-                    )
-                  else
-                    for (var i = 0; i < _items.length; i++)
-                      Card(
-                        margin: const EdgeInsets.only(bottom: 8),
-                        child: ListTile(
-                          title: Text(_items[i].garmentType),
-                          subtitle: Text(_items[i].summaryLine),
-                          trailing: IconButton(
-                            icon: const Icon(Icons.close),
-                            onPressed: () {
-                              final removed = _items[i];
-                              setState(() => _items.removeAt(i));
-                              for (final id in removed.stagedFileIds) {
-                                _repo.deleteStagedFile(id);
-                              }
-                            },
-                          ),
-                        ),
-                      ),
+
+                  const SizedBox(height: 24),
+                  // ── Running totals ───────────────────────────────────────
+                  _TotalsCard(
+                    subtotal: _subtotal,
+                    discount: _discountAmount,
+                    total: _total,
+                  ),
                 ],
               ),
             ),
-            Padding(
-              padding: const EdgeInsets.all(24),
-              child: FilledButton(
-                onPressed:
-                    (_isSubmitting || _uploadingMedia) ? null : _submit,
-                child: _isSubmitting
-                    ? const SizedBox(
-                        height: 18,
-                        width: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Text('Create order'),
-              ),
+            _BottomBar(
+              total: _total,
+              hasItems: _items.isNotEmpty,
+              busy: busy,
+              submitting: _isSubmitting,
+              onSubmit: _submit,
             ),
           ],
         ),
@@ -280,52 +322,451 @@ class _OrderFormScreenState extends ConsumerState<OrderFormScreen> {
   }
 }
 
-String _fmtDate(DateTime d) =>
-    '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
-
-/// Discount type selector + value field. The value field is shown only when
-/// a discount type is chosen, and its label tracks the type (a percentage vs
-/// a flat amount) so the meaning of the number is never ambiguous. The
-/// backend recomputes the actual `discount_amount`; this only collects the
-/// type and the raw value.
-class _DiscountFields extends StatelessWidget {
-  const _DiscountFields({
-    required this.type,
-    required this.valueController,
-    required this.onTypeChanged,
+/// The pinned create bar: the live total on the left, the primary action on
+/// the right. Sits above the safe-area inset so it clears the home indicator.
+class _BottomBar extends StatelessWidget {
+  const _BottomBar({
+    required this.total,
+    required this.hasItems,
+    required this.busy,
+    required this.submitting,
+    required this.onSubmit,
   });
 
-  final String type;
-  final TextEditingController valueController;
-  final ValueChanged<String> onTypeChanged;
+  final double total;
+  final bool hasItems;
+  final bool busy;
+  final bool submitting;
+  final VoidCallback onSubmit;
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        DropdownButtonFormField<String>(
-          value: type,
-          decoration: const InputDecoration(labelText: 'Discount'),
-          items: [
-            for (final t in kDiscountTypes)
-              DropdownMenuItem(value: t, child: Text(discountTypeLabel(t))),
-          ],
-          onChanged: (v) {
-            if (v != null) onTypeChanged(v);
-          },
-        ),
-        if (type != 'none') ...[
-          const SizedBox(height: 12),
-          TextField(
-            controller: valueController,
-            decoration: InputDecoration(
-              labelText:
-                  type == 'percentage' ? 'Discount (%)' : 'Discount amount',
+    final scheme = Theme.of(context).colorScheme;
+    final tokens = context.appTokens;
+    return Container(
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        border: Border(top: BorderSide(color: scheme.outline)),
+      ),
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
+      child: Row(
+        children: [
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Total',
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                      letterSpacing: 0.6,
+                    ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                formatNaira(total),
+                style: TextStyle(
+                  fontFamily: tokens.fontDisplay,
+                  fontFamilyFallback: tokens.fontDisplayFallback,
+                  fontSize: 22,
+                  height: 1,
+                  color: scheme.onSurface,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: FilledButton(
+              onPressed: (busy || !hasItems) ? null : onSubmit,
+              style: FilledButton.styleFrom(
+                minimumSize: const Size.fromHeight(52),
+              ),
+              child: submitting
+                  ? const SizedBox(
+                      height: 18,
+                      width: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text('Create order'),
             ),
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Placeholder shown until the first outfit is added — the order can't be
+/// created without one, so it reads as the obvious next step rather than an
+/// error the owner has to discover at submit time.
+class _EmptyOutfits extends StatelessWidget {
+  const _EmptyOutfits();
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 22, horizontal: 16),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerLow.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(context.appTokens.radiusLg),
+      ),
+      child: Column(
+        children: [
+          Icon(Icons.checkroom_outlined,
+              color: scheme.onSurfaceVariant, size: 28),
+          const SizedBox(height: 8),
+          Text(
+            'No outfits yet',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: scheme.onSurface,
+                  fontWeight: FontWeight.w600,
+                ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            'Every order needs at least one garment.',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// One accumulated outfit, as a card: fabric thumbnail (or a garment glyph),
+/// the garment name in the display face, its summary line, and the line total.
+class _OutfitCard extends StatelessWidget {
+  const _OutfitCard({required this.item, required this.onRemove});
+
+  final OrderItemInput item;
+  final VoidCallback onRemove;
+
+  String? get _thumbUrl {
+    for (final f in item.fabrics) {
+      final u = f.imageUrl;
+      if (u != null && u.isNotEmpty) return u;
+    }
+    return null;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final tokens = context.appTokens;
+    final thumb = _thumbUrl;
+    return Container(
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(tokens.radiusLg),
+        border: Border.all(color: scheme.outline),
+      ),
+      padding: const EdgeInsets.all(12),
+      child: Row(
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(tokens.radiusSm),
+            child: SizedBox(
+              width: 46,
+              height: 46,
+              child: thumb != null
+                  ? Image.network(
+                      thumb,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => _GlyphTile(),
+                    )
+                  : _GlyphTile(),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  item.garmentType,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontFamily: tokens.fontDisplay,
+                    fontFamilyFallback: tokens.fontDisplayFallback,
+                    fontSize: 16,
+                    color: scheme.onSurface,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  item.summaryLine,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                      ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                formatNaira(item.unitPrice * item.quantity),
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      color: scheme.onSurface,
+                      fontWeight: FontWeight.w700,
+                    ),
+              ),
+              const SizedBox(height: 2),
+              InkWell(
+                onTap: onRemove,
+                borderRadius: BorderRadius.circular(20),
+                child: Padding(
+                  padding: const EdgeInsets.all(2),
+                  child: Icon(Icons.close,
+                      size: 18, color: scheme.onSurfaceVariant),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _GlyphTile extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      color: scheme.surfaceContainerHigh,
+      child: Icon(Icons.checkroom_outlined,
+          size: 22, color: scheme.onSurfaceVariant),
+    );
+  }
+}
+
+/// The dashed "add" affordance from the design — a placeholder-styled tile
+/// rather than a filled button, so it reads as "there's room for more here"
+/// instead of the screen's primary action (which is Create, in the bottom bar).
+class _AddOutfitButton extends StatelessWidget {
+  const _AddOutfitButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final radius = context.appTokens.radiusLg;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(radius),
+      child: CustomPaint(
+        painter: _DashedRRectPainter(
+          color: scheme.primary.withValues(alpha: 0.55),
+          radius: radius,
+        ),
+        child: Container(
+          height: 52,
+          alignment: Alignment.center,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.add, size: 20, color: scheme.primary),
+              const SizedBox(width: 8),
+              Text(
+                'Add outfit',
+                style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                      color: scheme.primary,
+                      fontWeight: FontWeight.w600,
+                    ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Strokes a dashed rounded rectangle the size of its child. Hand-rolled so the
+/// design's dashed placeholder borders don't pull in a package for one paint.
+class _DashedRRectPainter extends CustomPainter {
+  _DashedRRectPainter({required this.color, required this.radius});
+
+  final Color color;
+  final double radius;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.4;
+    final rrect = RRect.fromRectAndRadius(
+      Offset.zero & size,
+      Radius.circular(radius),
+    );
+    final path = Path()..addRRect(rrect);
+    const dash = 6.0;
+    const gap = 5.0;
+    for (final metric in path.computeMetrics()) {
+      var distance = 0.0;
+      while (distance < metric.length) {
+        final next = distance + dash;
+        canvas.drawPath(
+          metric.extractPath(distance, next.clamp(0, metric.length)),
+          paint,
+        );
+        distance = next + gap;
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(_DashedRRectPainter old) =>
+      old.color != color || old.radius != radius;
+}
+
+/// The running money card — subtotal, any discount, and the resulting total,
+/// echoing the receipt the order will settle to. An estimate: the backend is
+/// authoritative on save, but the arithmetic here is the same.
+class _TotalsCard extends StatelessWidget {
+  const _TotalsCard({
+    required this.subtotal,
+    required this.discount,
+    required this.total,
+  });
+
+  final double subtotal;
+  final double discount;
+  final double total;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final tokens = context.appTokens;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHigh,
+        borderRadius: BorderRadius.circular(tokens.radiusLg),
+      ),
+      child: Column(
+        children: [
+          _row(context, 'Subtotal', formatNaira(subtotal), muted: true),
+          if (discount > 0) ...[
+            const SizedBox(height: 8),
+            _row(context, 'Discount', '−${formatNaira(discount)}',
+                muted: true),
+          ],
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: Divider(height: 1, color: scheme.outline),
+          ),
+          Row(
+            children: [
+              Text(
+                'Total',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      color: scheme.onSurface,
+                      fontWeight: FontWeight.w600,
+                    ),
+              ),
+              const Spacer(),
+              Text(
+                formatNaira(total),
+                style: TextStyle(
+                  fontFamily: tokens.fontDisplay,
+                  fontFamilyFallback: tokens.fontDisplayFallback,
+                  fontSize: 22,
+                  height: 1,
+                  color: scheme.onSurface,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _row(BuildContext context, String label, String value,
+      {bool muted = false}) {
+    final scheme = Theme.of(context).colorScheme;
+    final style = Theme.of(context).textTheme.bodyMedium?.copyWith(
+          color: muted ? scheme.onSurfaceVariant : scheme.onSurface,
+        );
+    return Row(
+      children: [
+        Text(label, style: style),
+        const Spacer(),
+        Text(value, style: style),
+      ],
+    );
+  }
+}
+
+/// Small filled count badge for a section header ("3").
+class _CountBadge extends StatelessWidget {
+  const _CountBadge(this.count);
+
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: scheme.primary.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        '$count',
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: scheme.primary,
+              fontWeight: FontWeight.w700,
+            ),
+      ),
+    );
+  }
+}
+
+/// "n/3" count for the media header, with an inline spinner while a pick is
+/// still uploading.
+class _MediaCount extends StatelessWidget {
+  const _MediaCount({required this.count, required this.uploading});
+
+  final int count;
+  final bool uploading;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (uploading) ...[
+          const SizedBox(
+            height: 12,
+            width: 12,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+          const SizedBox(width: 8),
+        ],
+        Text(
+          '$count/3',
+          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: scheme.onSurfaceVariant,
+                fontWeight: FontWeight.w600,
+              ),
+        ),
       ],
     );
   }
@@ -349,118 +790,84 @@ class _MediaStagingStrip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final canAdd = staged.length < 3;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    // Snapshot once per rebuild so tap-index math stays consistent with what's
+    // actually rendered when videos are filtered out.
+    final imageUrls = [
+      for (final m in staged)
+        if (m.fileType != 'video') m.url,
+    ];
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
       children: [
-        Row(
-          children: [
-            Text('Order media',
-                style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(width: 8),
-            Text(
-              '${staged.length}/3',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(context).colorScheme.outline,
-                  ),
-            ),
-            if (uploading) ...[
-              const SizedBox(width: 8),
-              const SizedBox(
-                height: 14,
-                width: 14,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
-            ],
-          ],
-        ),
-        const SizedBox(height: 8),
-        Builder(
-          builder: (context) {
-            // Snapshot once per rebuild so tap-index math stays consistent
-            // with what's actually rendered when videos are filtered out.
-            final imageUrls = [
-              for (final m in staged)
-                if (m.fileType != 'video') m.url,
-            ];
-            return Wrap(
-              spacing: 8,
-              runSpacing: 8,
+        for (var i = 0; i < staged.length; i++)
+          SizedBox(
+            width: 72,
+            height: 72,
+            child: Stack(
+              fit: StackFit.expand,
               children: [
-                for (var i = 0; i < staged.length; i++)
-                  SizedBox(
-                    width: 72,
-                    height: 72,
-                    child: Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        GestureDetector(
-                          onTap: staged[i].fileType == 'video'
-                              ? null
-                              : () => showImageViewer(
-                                    context,
-                                    urls: imageUrls,
-                                    initialIndex:
-                                        imageUrls.indexOf(staged[i].url),
-                                  ),
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(8),
-                            child: staged[i].fileType == 'video'
-                                ? Container(
-                                    color: Theme.of(context)
-                                        .colorScheme
-                                        .surfaceContainerHighest,
-                                    child:
-                                        const Icon(Icons.play_circle_outline),
-                                  )
-                                : Image.network(
-                                    staged[i].url,
-                                    fit: BoxFit.cover,
-                                    errorBuilder: (_, __, ___) => const Icon(
-                                        Icons.broken_image_outlined),
-                                  ),
+                GestureDetector(
+                  onTap: staged[i].fileType == 'video'
+                      ? null
+                      : () => showImageViewer(
+                            context,
+                            urls: imageUrls,
+                            initialIndex: imageUrls.indexOf(staged[i].url),
                           ),
-                        ),
-                    Positioned(
-                      top: -6,
-                      right: -6,
-                      child: IconButton(
-                        visualDensity: VisualDensity.compact,
-                        icon: CircleAvatar(
-                          radius: 10,
-                          backgroundColor:
-                              Theme.of(context).colorScheme.errorContainer,
-                          child: Icon(
-                            Icons.close,
-                            size: 13,
-                            color:
-                                Theme.of(context).colorScheme.onErrorContainer,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: staged[i].fileType == 'video'
+                        ? Container(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .surfaceContainerHighest,
+                            child: const Icon(Icons.play_circle_outline),
+                          )
+                        : Image.network(
+                            staged[i].url,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) =>
+                                const Icon(Icons.broken_image_outlined),
                           ),
-                        ),
-                        onPressed: () => onRemoveAt(i),
+                  ),
+                ),
+                Positioned(
+                  top: -6,
+                  right: -6,
+                  child: IconButton(
+                    visualDensity: VisualDensity.compact,
+                    icon: CircleAvatar(
+                      radius: 10,
+                      backgroundColor:
+                          Theme.of(context).colorScheme.errorContainer,
+                      child: Icon(
+                        Icons.close,
+                        size: 13,
+                        color: Theme.of(context).colorScheme.onErrorContainer,
                       ),
                     ),
-                  ],
-                ),
-              ),
-            if (canAdd)
-              InkWell(
-                borderRadius: BorderRadius.circular(8),
-                onTap: uploading ? null : onAdd,
-                child: Container(
-                  width: 72,
-                  height: 72,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                        color: Theme.of(context).colorScheme.outline),
+                    onPressed: () => onRemoveAt(i),
                   ),
-                  child: const Icon(Icons.add_a_photo_outlined),
                 ),
+              ],
+            ),
+          ),
+        if (canAdd)
+          InkWell(
+            borderRadius: BorderRadius.circular(8),
+            onTap: uploading ? null : onAdd,
+            child: Container(
+              width: 72,
+              height: 72,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Theme.of(context).colorScheme.outline),
               ),
-          ],
-        );
-          },
-        ),
+              child: Icon(Icons.add_a_photo_outlined,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant),
+            ),
+          ),
       ],
     );
   }

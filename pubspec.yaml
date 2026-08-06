@@ -53,3 +53,22 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+
+  # Brand fonts from tokens.json. Both are variable TrueType files (OFL,
+  # bundled from github.com/google/fonts): a single asset per family covers
+  # every weight via the `wght` axis, which Flutter maps `fontWeight` onto.
+  #   - Inter    -> the sans body face (ThemeData.fontFamily)
+  #   - Fraunces -> the display/serif voice (AppTokens.fontDisplay)
+  fonts:
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/Inter-Variable.ttf
+    - family: Fraunces
+      fonts:
+        - asset: assets/fonts/Fraunces-Variable.ttf
+    # Monospace for money figures only (the receipt/claim-ticket look): its
+    # tabular digits keep amount columns aligned. Referenced by name in
+    # payment_section.dart. Labels on those cards use Inter.
+    - family: JetBrainsMono
+      fonts:
+        - asset: assets/fonts/JetBrainsMono-Variable.ttf

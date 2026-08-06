@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../features/auth/screens/login_screen.dart';
 import '../../features/auth/screens/register_screen.dart';
+import '../../features/auth/screens/complete_profile_screen.dart';
 import '../../features/shell/main_shell_screen.dart';
 import '../../features/home/screens/home_tab_screen.dart';
 import '../../features/tasks/screens/tasks_tab_screen.dart';
@@ -37,6 +38,7 @@ import '../../features/measurements/screens/measurement_field_form_screen.dart';
 import '../../features/measurements/screens/measurement_templates_screen.dart';
 import '../../features/measurements/screens/measurement_template_form_screen.dart';
 import '../auth/auth_state.dart';
+import '../auth/models/user.dart';
 
 /// Bridges Riverpod's AsyncNotifier-based auth state to go_router's
 /// ChangeNotifier-based refreshListenable, so the redirect guard re-runs when
@@ -75,12 +77,30 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       // than flashing /login and back once the check resolves.
       if (authState.isLoading) return null;
 
-      final isLoggedIn = authState.valueOrNull != null;
+      final user = authState.valueOrNull;
+      final isLoggedIn = user != null;
       const publicRoutes = {'/login', '/register'};
+      const completeProfilePath = '/complete-profile';
       final isOnPublicRoute = publicRoutes.contains(state.matchedLocation);
+      final isOnCompleteProfile =
+          state.matchedLocation == completeProfilePath;
 
-      if (!isLoggedIn && !isOnPublicRoute) return '/login';
-      if (isLoggedIn && isOnPublicRoute) return '/home';
+      // Not logged in: only the public auth routes are reachable.
+      if (!isLoggedIn) {
+        return isOnPublicRoute ? null : '/login';
+      }
+
+      // Logged in but the profile is missing fields registration now requires
+      // (Google signups, pre-existing accounts) — funnel to /complete-profile
+      // and keep them there until it's filled in. This gate outranks the
+      // public-route bounce below so a half-set-up account can't slip into the
+      // app via /login or /register.
+      if (!user.isProfileComplete) {
+        return isOnCompleteProfile ? null : completeProfilePath;
+      }
+
+      // Complete profile: keep them out of the auth-only screens.
+      if (isOnPublicRoute || isOnCompleteProfile) return '/home';
       return null;
     },
     routes: [
@@ -88,6 +108,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/register',
         builder: (context, state) => const RegisterScreen(),
+      ),
+      GoRoute(
+        path: '/complete-profile',
+        builder: (context, state) => const CompleteProfileScreen(),
       ),
 
       // The five-tab bottom-nav shell. Only the tab ROOTS live in branches

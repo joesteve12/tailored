@@ -65,18 +65,45 @@ class AuthStateNotifier extends AsyncNotifier<User?> {
 
   Future<User> registerWithPassword({
     required String businessName,
+    required String ownerName,
+    required String businessAddress,
+    required List<String> specializations,
     required String email,
     required String phone,
     required String password,
   }) async {
     final user = await ref.read(authRepositoryProvider).registerWithPassword(
           businessName: businessName,
+          ownerName: ownerName,
+          businessAddress: businessAddress,
+          specializations: specializations,
           email: email,
           phone: phone,
           password: password,
         );
     state = AsyncData(user);
     _clearPerTenantCaches();
+    return user;
+  }
+
+  /// Completes (or edits) the logged-in business's profile via PUT /users/me
+  /// and pushes the refreshed user into state. Same tenant throughout, so no
+  /// per-tenant cache clear — this only fills in profile fields. Once the
+  /// updated user is [UserProfileCompletion.isProfileComplete], the router's
+  /// redirect guard moves off /complete-profile on its own.
+  Future<User> completeProfile({
+    required String businessName,
+    required String ownerName,
+    required String businessAddress,
+    required List<String> specializations,
+  }) async {
+    final user = await ref.read(authRepositoryProvider).updateProfile(
+          businessName: businessName,
+          ownerName: ownerName,
+          businessAddress: businessAddress,
+          specializations: specializations,
+        );
+    state = AsyncData(user);
     return user;
   }
 

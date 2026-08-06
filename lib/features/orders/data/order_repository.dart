@@ -61,6 +61,32 @@ class OrderRepository {
     return OrderListResponse.fromJson(response.data as Map<String, dynamic>);
   }
 
+  /// GET /orders/search?q=… — free-text search over order number / client
+  /// name, narrowable by the same status/priority/sort knobs the list uses
+  /// (a subset: no client_id or due-date range here). Returns the same
+  /// {total, page, page_size, results} envelope as [list], so the caller
+  /// paginates it identically.
+  Future<OrderListResponse> search({
+    required String query,
+    String? orderStatus,
+    String? paymentStatus,
+    String? priority,
+    String? sortBy,
+    int page = 1,
+    int pageSize = 20,
+  }) async {
+    final response = await _dio.get('/orders/search', queryParameters: {
+      'q': query,
+      if (orderStatus != null) 'order_status': orderStatus,
+      if (paymentStatus != null) 'payment_status': paymentStatus,
+      if (priority != null) 'priority': priority,
+      if (sortBy != null) 'sort_by': sortBy,
+      'page': page,
+      'page_size': pageSize,
+    });
+    return OrderListResponse.fromJson(response.data as Map<String, dynamic>);
+  }
+
   Future<Order> getById(String id) async {
     final response = await _dio.get('/orders/$id');
     return Order.fromJson(response.data as Map<String, dynamic>);

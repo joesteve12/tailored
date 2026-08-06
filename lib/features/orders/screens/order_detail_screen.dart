@@ -8,6 +8,7 @@ import '../../../core/utils/fabric_labels.dart';
 import '../../../core/utils/money.dart';
 import '../../../core/utils/order_labels.dart';
 import '../../../core/widgets/async_error_view.dart';
+import '../../../core/widgets/quote_note.dart';
 import '../../documents/widgets/order_document_actions.dart';
 import '../../payments/widgets/payment_section.dart';
 import '../data/order_repository.dart';
@@ -18,7 +19,7 @@ import '../state/order_detail_notifier.dart';
 import '../state/order_list_notifier.dart';
 import '../widgets/order_activity_section.dart';
 import '../widgets/order_client_tile.dart';
-import '../widgets/order_addons_section.dart';
+import '../widgets/order_details_edit_sheet.dart';
 import '../widgets/order_item_edit_sheet.dart';
 import '../widgets/order_item_form_sheet.dart';
 import '../widgets/order_media_section.dart';
@@ -196,9 +197,14 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen>
   }
 
   Future<void> _editDetails(Order order) async {
-    final result = await showDialog<_DetailsEdit>(
+    // Slides up from the bottom now, rather than a centre dialog. Discount is
+    // no longer edited here — it lives on the payment ticket in the Overview
+    // tab — so this sheet carries only due date, priority, and notes.
+    final result = await showModalBottomSheet<OrderDetailsEdit>(
       context: context,
-      builder: (context) => _EditDetailsDialog(order: order),
+      isScrollControlled: true,
+      useRootNavigator: true,
+      builder: (context) => OrderDetailsEditSheet(order: order),
     );
     if (result == null || !mounted) return;
 
@@ -208,9 +214,6 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen>
         dueDate: result.dueDate,
         notes: result.notes,
         priority: result.priority,
-        discountType: result.discountType,
-        discountValue: result.discountValue,
-        discountIncludesAddons: result.discountIncludesAddons,
       );
       _refreshList();
     } catch (e) {
@@ -270,25 +273,70 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen>
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text(''),
+        title: Text(currentOrder?.orderNumber ?? ''),
         actions: [
-          if (currentOrder != null && !locked)
-            IconButton(
-              icon: const Icon(Icons.edit),
-              tooltip: 'Edit details',
-              onPressed: _busy ? null : () => _editDetails(currentOrder),
+          // Status lives in the app bar now (it used to sit beside the order
+          // number in the scrolling header). Still the status control — tapping
+          // it opens the same allowed-transition menu.
+          if (currentOrder != null) ...[
+            _StatusChip(
+              order: currentOrder,
+              busy: _busy,
+              onAdvance: _advanceStatus,
             ),
-          if (canDelete)
-            IconButton(
+            const SizedBox(width: 4),
+          ],
+          // Edit and delete are folded into a single "more actions" overflow
+          // so the app bar stays light beside the status pill. The menu only
+          // appears when at least one of its actions is available; a delete in
+          // flight swaps the icon for a spinner (its old inline feedback).
+          if ((currentOrder != null && !locked) || canDelete)
+            PopupMenuButton<String>(
+              enabled: !_busy && !_isDeleting,
+              tooltip: 'More actions',
               icon: _isDeleting
                   ? const SizedBox(
                       height: 18,
                       width: 18,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
-                  : const Icon(Icons.delete_outline),
-              tooltip: 'Delete',
-              onPressed: _isDeleting ? null : _confirmDelete,
+                  : const Icon(Icons.more_vert),
+              onSelected: (value) {
+                switch (value) {
+                  case 'edit':
+                    _editDetails(currentOrder!);
+                  case 'delete':
+                    _confirmDelete();
+                }
+              },
+              itemBuilder: (context) => [
+                if (currentOrder != null && !locked)
+                  const PopupMenuItem<String>(
+                    value: 'edit',
+                    child: Row(
+                      children: [
+                        Icon(Icons.edit_outlined, size: 18),
+                        SizedBox(width: 10),
+                        Text('Edit details'),
+                      ],
+                    ),
+                  ),
+                if (canDelete)
+                  PopupMenuItem<String>(
+                    value: 'delete',
+                    child: Row(
+                      children: [
+                        Icon(Icons.delete_outline,
+                            size: 18,
+                            color: Theme.of(context).colorScheme.error),
+                        const SizedBox(width: 10),
+                        Text('Delete order',
+                            style: TextStyle(
+                                color: Theme.of(context).colorScheme.error)),
+                      ],
+                    ),
+                  ),
+              ],
             ),
         ],
       ),
@@ -319,11 +367,7 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen>
                         _LockedBanner(status: order.status),
                         const SizedBox(height: 12),
                       ],
-                      _Header(
-                        order: order,
-                        busy: _busy,
-                        onAdvance: _advanceStatus,
-                      ),
+                      _Header(order: order),
                     ],
                   ),
                 ),
@@ -331,17 +375,7 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen>
             ),
             SliverPersistentHeader(
               pinned: true,
-              delegate: _PinnedTabBarDelegate(
-                TabBar(
-                  controller: _tabController,
-                  tabs: const [
-                    Tab(text: 'Overview'),
-                    Tab(text: 'Outfits'),
-                    Tab(text: 'Activity'),
-                    Tab(text: 'Media'),
-                  ],
-                ),
-              ),
+              delegate: _PinnedTabBarDelegate(_tabController),
             ),
           ],
           body: TabBarView(
@@ -378,32 +412,109 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen>
 /// elsewhere on this screen used to be the only signal that the order was
 /// closed — this makes the reason explicit instead of leaving people to
 /// infer it from a missing pencil icon.
-/// Standard NestedScrollView boilerplate: wraps the TabBar so it can sit in
-/// a SliverPersistentHeader and stay pinned while the header above it (order
-/// number, status, client, priority/due date) scrolls away normally.
+/// Standard NestedScrollView boilerplate: wraps the pill tab bar so it can sit
+/// in a SliverPersistentHeader and stay pinned while the header above it (order
+/// number, status, client, priority/due date) scrolls away normally. The
+/// extent is fixed (the pill bar has a constant height) rather than read off a
+/// TabBar's preferredSize, since the bar is now a custom segmented control.
 class _PinnedTabBarDelegate extends SliverPersistentHeaderDelegate {
-  const _PinnedTabBarDelegate(this.tabBar);
+  const _PinnedTabBarDelegate(this.controller);
 
-  final TabBar tabBar;
+  final TabController controller;
+
+  // The 8px gap above the pill (so it clears the app bar when pinned) + the
+  // pill track (44) + the 8px gap below it before tab content begins.
+  static const double _extent = 8 + _PillTabBar.trackHeight + 8;
 
   @override
-  double get minExtent => tabBar.preferredSize.height;
+  double get minExtent => _extent;
 
   @override
-  double get maxExtent => tabBar.preferredSize.height;
+  double get maxExtent => _extent;
 
   @override
   Widget build(
       BuildContext context, double shrinkOffset, bool overlapsContent) {
     return Material(
       color: Theme.of(context).scaffoldBackgroundColor,
-      child: tabBar,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+        child: _PillTabBar(controller: controller),
+      ),
     );
   }
 
   @override
   bool shouldRebuild(covariant _PinnedTabBarDelegate oldDelegate) =>
-      tabBar != oldDelegate.tabBar;
+      controller != oldDelegate.controller;
+}
+
+/// The order's section switcher, styled as a segmented pill control rather
+/// than Material's underline TabBar: a tan `sidebarAccent` track holding four
+/// equal segments, the selected one filled with the terracotta
+/// `sidebarPrimary` and its cream foreground. Each segment pairs an icon with
+/// its label on one row. All colors come from the sidebar token family so the
+/// control reads as the app's warm chrome and tracks light/dark automatically.
+class _PillTabBar extends StatelessWidget {
+  const _PillTabBar({required this.controller});
+
+  final TabController controller;
+
+  /// Outer track height: segment (36) + the 4px inset on each side.
+  static const double trackHeight = 44;
+  static const double _inset = 4;
+  static const double _segmentHeight = trackHeight - _inset * 2;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.appTokens;
+    final pillRadius = BorderRadius.circular(t.radiusMd);
+    return Container(
+      height: trackHeight,
+      padding: const EdgeInsets.all(_inset),
+      decoration: BoxDecoration(
+        color: t.sidebarAccent,
+        borderRadius: BorderRadius.circular(t.radiusLg),
+      ),
+      child: TabBar(
+        controller: controller,
+        indicatorSize: TabBarIndicatorSize.tab,
+        indicatorPadding: EdgeInsets.zero,
+        indicator: BoxDecoration(color: t.sidebarPrimary, borderRadius: pillRadius),
+        splashBorderRadius: pillRadius,
+        dividerColor: Colors.transparent,
+        labelColor: t.sidebarPrimaryForeground,
+        unselectedLabelColor: t.sidebarForeground,
+        labelStyle: TextStyle(fontSize: 12, fontWeight: t.fontWeightMedium),
+        unselectedLabelStyle:
+            TextStyle(fontSize: 12, fontWeight: t.fontWeightNormal),
+        padding: EdgeInsets.zero,
+        labelPadding: const EdgeInsets.symmetric(horizontal: 4),
+        tabs: const [
+          _PillTab(label: 'Overview'),
+          _PillTab(label: 'Outfits'),
+          _PillTab(label: 'Activity'),
+          _PillTab(label: 'Media'),
+        ],
+      ),
+    );
+  }
+}
+
+/// One segment of [_PillTabBar]: a centered label. Color flips with the
+/// segment's selected state via the TabBar's label colors.
+class _PillTab extends StatelessWidget {
+  const _PillTab({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tab(
+      height: _PillTabBar._segmentHeight,
+      child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
+    );
+  }
 }
 
 /// Shared scroll body for each tab's content: a SliverOverlapInjector (the
@@ -487,17 +598,12 @@ class _OverviewTab extends StatelessWidget {
       onRefresh: onRefresh,
       children: [
         if (order.notes != null && order.notes!.isNotEmpty) ...[
-          Text('Notes', style: Theme.of(context).textTheme.titleSmall),
-          const SizedBox(height: 8),
-          Text(order.notes!),
+          QuoteNote(text: order.notes!),
           const SizedBox(height: 20),
         ],
-        // Extra charges sit right above the money card: they're the
-        // other half of what the total is made of, and reading them
-        // straight before the total is what makes the Garments/Extras
-        // split legible.
-        OrderAddonsSection(order: order),
-        const SizedBox(height: 12),
+        // Extra charges are managed inside the payment card now — the ticket
+        // itemizes them with add/edit/remove — so the money and the charges
+        // that make it up live in one place instead of two stacked cards.
         PaymentSection(order: order),
       ],
     );
@@ -598,15 +704,9 @@ class _MediaTab extends StatelessWidget {
 }
 
 class _Header extends StatelessWidget {
-  const _Header({
-    required this.order,
-    required this.busy,
-    required this.onAdvance,
-  });
+  const _Header({required this.order});
 
   final Order order;
-  final bool busy;
-  final ValueChanged<String> onAdvance;
 
   @override
   Widget build(BuildContext context) {
@@ -618,21 +718,8 @@ class _Header extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Expanded(
-              child: Text(order.orderNumber,
-                  style: Theme.of(context).textTheme.headlineSmall),
-            ),
-            _StatusChip(
-              order: order,
-              busy: busy,
-              onAdvance: onAdvance,
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
+        // Order number and status moved to the app bar; the header now leads
+        // with the client tile.
         // The client tile already carries its own name display and
         // tap-through to the client detail screen — reused here directly
         // rather than duplicating that link logic, since this file doesn't
@@ -689,18 +776,18 @@ Color _priorityColor(String priority, ColorScheme scheme) {
   }
 }
 
-/// The status chip doubles as the status control: tapping it opens the same
-/// allowed-transition menu the old separate "Update status" button did.
-/// Color-coded by a best-effort read of common order-status strings
-/// (pending / in production / ready / delivered / cancelled) — this file
-/// doesn't have access to the real status enum, so unmatched values fall
-/// back to a neutral tone rather than guessing wrong. Confirm the actual
-/// status strings in order_labels.dart and adjust the switch below to
-/// match exactly.
+/// The status pill is both the current-status *display* and the status
+/// *control*. It always shows the current status — a color-coded tinted pill
+/// (the same StatusColors palette the order list uses, so a status reads the
+/// same everywhere). Tapping it opens the allowed-transition menu, where the
+/// one "happy path" forward move ([primaryOrderTransition]) is a filled
+/// colored row pinned to the top, the sideways moves sit below it as plain
+/// rows, and Cancel is divided off at the bottom in the error tone.
 ///
-/// When there are no allowed transitions (terminal state), the chip is
-/// static — no chevron, no tap handler — rather than opening an empty
-/// menu.
+/// Unknown statuses fall back to a neutral outlined pill rather than guessing
+/// a color. When there are no allowed transitions (a terminal state, or an
+/// unknown one), the pill is static — no chevron, no menu — instead of
+/// opening an empty list.
 class _StatusChip extends StatelessWidget {
   const _StatusChip({
     required this.order,
@@ -716,75 +803,191 @@ class _StatusChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final status = order.status;
-    final s = status.toLowerCase();
-
-    Color bg;
-    Color fg;
-    if (s.contains('cancel')) {
-      bg = scheme.errorContainer;
-      fg = scheme.onErrorContainer;
-    } else if (s.contains('deliver')) {
-      bg = scheme.surfaceContainerHighest;
-      fg = scheme.onSurfaceVariant;
-    } else if (s.contains('ready')) {
-      bg = scheme.tertiaryContainer;
-      fg = scheme.onTertiaryContainer;
-    } else if (s.contains('production') || s.contains('progress')) {
-      bg = scheme.primaryContainer;
-      fg = scheme.onPrimaryContainer;
-    } else {
-      // pending / anything unrecognized
-      bg = scheme.secondaryContainer;
-      fg = scheme.onSecondaryContainer;
-    }
-
+    final meta = _statusMeta(status, scheme);
     final transitions = allowedOrderTransitions(status);
-    final label = Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(orderStatusLabel(status)),
-        if (transitions.isNotEmpty) ...[
-          const SizedBox(width: 4),
-          if (busy)
-            SizedBox(
-              height: 12,
-              width: 12,
-              child: CircularProgressIndicator(strokeWidth: 2, color: fg),
-            )
-          else
-            Icon(Icons.expand_more, size: 16, color: fg),
-        ],
-      ],
-    );
 
-    if (transitions.isEmpty) {
-      return Chip(
-        label: label,
-        labelStyle: TextStyle(color: fg, fontWeight: FontWeight.w600),
-        backgroundColor: bg,
-        side: BorderSide.none,
-        visualDensity: VisualDensity.compact,
-      );
-    }
+    final pill = _pill(meta, hasMenu: transitions.isNotEmpty);
+    if (transitions.isEmpty) return pill;
 
     return PopupMenuButton<String>(
       enabled: !busy,
       onSelected: onAdvance,
-      itemBuilder: (context) => [
-        for (final t in transitions)
-          PopupMenuItem(value: t, child: Text(orderStatusLabel(t))),
-      ],
-      // The chip itself is the button — no separate control elsewhere on
-      // screen. A plain Chip (not a nested button) so the menu's own
-      // gesture handling owns the tap cleanly.
-      child: Chip(
-        label: label,
-        labelStyle: TextStyle(color: fg, fontWeight: FontWeight.w600),
-        backgroundColor: bg,
-        side: BorderSide.none,
-        visualDensity: VisualDensity.compact,
+      tooltip: 'Change status',
+      position: PopupMenuPosition.under,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      itemBuilder: (context) =>
+          _menuItems(status, transitions, scheme),
+      child: pill,
+    );
+  }
+
+  /// The always-visible current-status display.
+  Widget _pill(_StatusMeta meta, {required bool hasMenu}) {
+    if (meta.isFallback) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          border: Border.all(color: meta.color.withOpacity(0.5)),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Text(
+          orderStatusLabel(order.status),
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: meta.color,
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(10, 5, 8, 5),
+      decoration: BoxDecoration(
+        color: meta.color.withOpacity(0.14),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(meta.icon, size: 14, color: meta.color),
+          const SizedBox(width: 5),
+          Text(
+            orderStatusLabel(order.status),
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: meta.color,
+            ),
+          ),
+          if (hasMenu) ...[
+            const SizedBox(width: 2),
+            if (busy)
+              SizedBox(
+                height: 12,
+                width: 12,
+                child: CircularProgressIndicator(
+                    strokeWidth: 2, color: meta.color),
+              )
+            else
+              Icon(Icons.expand_more, size: 16, color: meta.color),
+          ],
+        ],
       ),
     );
+  }
+
+  /// Primary move first (filled), then the sideways moves, then Cancel
+  /// divided off. Built off the same allowed-transition list — this only
+  /// arranges it, the backend still owns what's permitted.
+  List<PopupMenuEntry<String>> _menuItems(
+    String status,
+    List<String> transitions,
+    ColorScheme scheme,
+  ) {
+    final primary = primaryOrderTransition(status);
+    final entries = <PopupMenuEntry<String>>[];
+
+    if (primary != null && transitions.contains(primary)) {
+      final pm = _statusMeta(primary, scheme);
+      entries.add(PopupMenuItem<String>(
+        value: primary,
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: pm.color,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.arrow_forward_rounded,
+                  size: 18, color: Colors.white),
+              const SizedBox(width: 10),
+              Text(
+                orderTransitionActionLabel(status, primary),
+                style: const TextStyle(
+                    color: Colors.white, fontWeight: FontWeight.w600),
+              ),
+            ],
+          ),
+        ),
+      ));
+    }
+
+    final secondary = transitions
+        .where((t) => t != primary && t != 'cancelled')
+        .toList(growable: false);
+    for (final t in secondary) {
+      final m = _statusMeta(t, scheme);
+      entries.add(PopupMenuItem<String>(
+        value: t,
+        child: Row(
+          children: [
+            Icon(m.icon, size: 18, color: m.color),
+            const SizedBox(width: 10),
+            Text(orderTransitionActionLabel(status, t)),
+          ],
+        ),
+      ));
+    }
+
+    if (transitions.contains('cancelled')) {
+      if (entries.isNotEmpty) entries.add(const PopupMenuDivider());
+      entries.add(PopupMenuItem<String>(
+        value: 'cancelled',
+        child: Row(
+          children: [
+            Icon(Icons.cancel_outlined, size: 18, color: scheme.error),
+            const SizedBox(width: 10),
+            Text(
+              orderTransitionActionLabel(status, 'cancelled'),
+              style: TextStyle(color: scheme.error),
+            ),
+          ],
+        ),
+      ));
+    }
+
+    return entries;
+  }
+}
+
+/// Color + icon for an order status. Mirrors the mapping in
+/// order_list_screen.dart (and client_orders_section.dart) so a status reads
+/// the same wherever it's shown; matching is on a normalized key so wire
+/// variants ("in_progress" / "in-progress" / "In Progress") all land. Unknown
+/// values return a neutral fallback rather than an arbitrary color.
+class _StatusMeta {
+  const _StatusMeta(this.color, this.icon, {this.isFallback = false});
+  final Color color;
+  final IconData icon;
+  final bool isFallback;
+}
+
+_StatusMeta _statusMeta(String status, ColorScheme scheme) {
+  final key = status.toLowerCase().replaceAll(RegExp(r'[^a-z]'), '');
+  switch (key) {
+    case 'pending':
+      return const _StatusMeta(
+          StatusColors.orderPending, Icons.schedule_rounded);
+    case 'inprogress':
+      return const _StatusMeta(
+          StatusColors.orderInProgress, Icons.autorenew_rounded);
+    case 'onhold':
+      return const _StatusMeta(
+          StatusColors.orderOnHold, Icons.pause_circle_rounded);
+    case 'ready':
+      return const _StatusMeta(StatusColors.orderReady, Icons.task_alt_rounded);
+    case 'delivered':
+      return const _StatusMeta(
+          StatusColors.orderDelivered, Icons.check_circle_rounded);
+    case 'cancelled':
+    case 'canceled':
+      return _StatusMeta(StatusColors.cancelled(scheme), Icons.cancel_rounded);
+    default:
+      return _StatusMeta(scheme.onSurfaceVariant, Icons.circle,
+          isFallback: true);
   }
 }
 
@@ -1082,216 +1285,5 @@ class _StyleRefThumbs extends StatelessWidget {
   }
 }
 
-/// Result of the edit-details dialog.
-class _DetailsEdit {
-  const _DetailsEdit({
-    required this.dueDate,
-    required this.notes,
-    required this.priority,
-    required this.discountType,
-    required this.discountValue,
-    required this.discountIncludesAddons,
-  });
-
-  final DateTime dueDate;
-  final String notes;
-  final String priority;
-  final String discountType;
-  final double discountValue;
-
-  /// Whether the discount computes on items+addons or items alone. Null when
-  /// the order has no addons — there's nothing for the choice to apply to, so
-  /// the dialog doesn't ask and the field isn't sent.
-  final bool? discountIncludesAddons;
-}
-
-/// Edit dialog expanded from the old due-date/notes pair to also carry
-/// priority and the discount type+value, so the whole of `OrderUpdate` is
-/// reachable from one place. The discount value field appears only when a
-/// discount type is selected.
-class _EditDetailsDialog extends StatefulWidget {
-  const _EditDetailsDialog({required this.order});
-
-  final Order order;
-
-  @override
-  State<_EditDetailsDialog> createState() => _EditDetailsDialogState();
-}
-
-class _EditDetailsDialogState extends State<_EditDetailsDialog> {
-  late DateTime _dueDate;
-  late final TextEditingController _notesController;
-  late final TextEditingController _discountController;
-  late String _priority;
-  late String _discountType;
-  late bool _discountIncludesAddons;
-
-  @override
-  void initState() {
-    super.initState();
-    final o = widget.order;
-    _dueDate = o.dueDate;
-    _notesController = TextEditingController(text: o.notes ?? '');
-    _discountController =
-        TextEditingController(text: _trimZeros(o.discountValue));
-    _priority = o.priority;
-    _discountType = o.discountType;
-    _discountIncludesAddons = o.discountIncludesAddons;
-  }
-
-  @override
-  void dispose() {
-    _notesController.dispose();
-    _discountController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Edit order'),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Due date'),
-              subtitle: Text(_fmtDate(_dueDate)),
-              trailing: const Icon(Icons.calendar_today, size: 18),
-              onTap: () async {
-                final picked = await showDatePicker(
-                  context: context,
-                  initialDate: _dueDate,
-                  firstDate: DateTime.now().subtract(const Duration(days: 365)),
-                  lastDate: DateTime.now().add(const Duration(days: 365 * 2)),
-                );
-                if (picked != null) setState(() => _dueDate = picked);
-              },
-            ),
-            const SizedBox(height: 8),
-            DropdownButtonFormField<String>(
-              value: _priority,
-              decoration: const InputDecoration(labelText: 'Priority'),
-              items: [
-                for (final p in kPriorities)
-                  DropdownMenuItem(value: p, child: Text(priorityLabel(p))),
-              ],
-              onChanged: (v) {
-                if (v != null) setState(() => _priority = v);
-              },
-            ),
-            const SizedBox(height: 12),
-            DropdownButtonFormField<String>(
-              value: _discountType,
-              decoration: const InputDecoration(labelText: 'Discount'),
-              items: [
-                for (final t in kDiscountTypes)
-                  DropdownMenuItem(value: t, child: Text(discountTypeLabel(t))),
-              ],
-              onChanged: (v) => setState(() {
-                _discountType = v ?? 'none';
-                if (_discountType == 'none') _discountController.text = '0';
-              }),
-            ),
-            if (_discountType != 'none') ...[
-              const SizedBox(height: 12),
-              TextField(
-                controller: _discountController,
-                decoration: InputDecoration(
-                  labelText: _discountType == 'percentage'
-                      ? 'Discount (%)'
-                      : 'Discount amount',
-                ),
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
-              ),
-              // Asked only when there are addons for the answer to apply to.
-              // On a plain order the choice is meaningless and the default
-              // (include) is sent silently — decision 3 in the spec, and the
-              // reason this prompt is here rather than on the create form,
-              // where an order has no addons yet and it could never fire.
-              if (widget.order.hasAddons) ...[
-                const SizedBox(height: 16),
-                Text(
-                  'Apply this discount to extra charges too?',
-                  style: Theme.of(context).textTheme.titleSmall,
-                ),
-                Text(
-                  'This order has ${formatNaira(widget.order.addonsTotal)} '
-                  'in extras.',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Theme.of(context).colorScheme.outline,
-                      ),
-                ),
-                RadioListTile<bool>(
-                  contentPadding: EdgeInsets.zero,
-                  dense: true,
-                  value: true,
-                  groupValue: _discountIncludesAddons,
-                  onChanged: (v) =>
-                      setState(() => _discountIncludesAddons = v!),
-                  title: Text('Yes — discount the full '
-                      '${formatNaira(widget.order.subtotal)}'),
-                ),
-                RadioListTile<bool>(
-                  contentPadding: EdgeInsets.zero,
-                  dense: true,
-                  value: false,
-                  groupValue: _discountIncludesAddons,
-                  onChanged: (v) =>
-                      setState(() => _discountIncludesAddons = v!),
-                  title: Text('No — discount only the '
-                      '${formatNaira(widget.order.itemsSubtotal)} in garments'),
-                ),
-              ],
-            ],
-            const SizedBox(height: 12),
-            TextField(
-              controller: _notesController,
-              decoration: const InputDecoration(labelText: 'Notes'),
-              maxLines: 3,
-            ),
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          onPressed: () {
-            final value = _discountType == 'none'
-                ? 0.0
-                : (double.tryParse(_discountController.text.trim()) ?? 0.0);
-            Navigator.pop(
-              context,
-              _DetailsEdit(
-                dueDate: _dueDate,
-                notes: _notesController.text.trim(),
-                priority: _priority,
-                discountType: _discountType,
-                discountValue: value,
-                discountIncludesAddons:
-                    widget.order.hasAddons ? _discountIncludesAddons : null,
-              ),
-            );
-          },
-          child: const Text('Save'),
-        ),
-      ],
-    );
-  }
-}
-
 String _fmtDate(DateTime d) =>
     '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
-
-/// Renders a discount value without trailing ".0" noise (e.g. 10 not 10.0,
-/// but 12.5 stays 12.5) — used in both the discount line and the edit field.
-String _trimZeros(double v) {
-  if (v == v.roundToDouble()) return v.toInt().toString();
-  return v.toString();
-}

@@ -337,6 +337,7 @@ class StatusColors {
   static const Color orderPending = Color(0xFFB8860B); // gold
   static const Color orderInProgress = Color(0xFF2563EB); // blue
   static const Color orderOnHold = Color(0xFF7C3AED); // purple
+  static const Color orderReady = Color(0xFF0D9488); // teal
   static const Color orderDelivered = Color(0xFF16A34A); // green
 
   // --- Payment status (see `_paymentMeta`) ---

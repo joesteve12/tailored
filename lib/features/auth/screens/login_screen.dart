@@ -7,15 +7,14 @@ import '../../../core/auth/auth_state.dart';
 
 import '../../../core/utils/errors.dart';
 import '../../../core/widgets/feedback.dart';
-/// TODO: replace with your actual Web OAuth client ID from Google Cloud
-/// Console — the SAME one your backend's settings.GOOGLE_CLIENT_ID points
-/// to, NOT the Android client ID. Using the Android client ID here is the
-/// single most common silent-failure point in this setup: the sign-in
-/// itself succeeds on-device, but the backend's
-/// id_token.verify_oauth2_token() rejects the token with an audience
-/// mismatch, and the error you'll see is just "Invalid Google token."
+/// This MUST stay identical to the backend's settings.GOOGLE_CLIENT_ID (the
+/// WEB OAuth client ID), NOT the Android client ID. google_sign_in stamps the
+/// id_token's audience with this serverClientId, and the backend's
+/// id_token.verify_oauth2_token() rejects any token whose audience doesn't
+/// match GOOGLE_CLIENT_ID — the error surfaces only as "Invalid Google token."
+/// Value copied from backend/.env GOOGLE_CLIENT_ID; keep the two in sync.
 const _googleServerClientId =
-    'REPLACE_WITH_WEB_CLIENT_ID.apps.googleusercontent.com';
+    '545544902685-ckgkar08vlrj1daq75hthmb8j5lc0m86.apps.googleusercontent.com';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});

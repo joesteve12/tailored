@@ -23,7 +23,19 @@ mixin _$User {
   String get id => throw _privateConstructorUsedError;
   String get email => throw _privateConstructorUsedError;
   @JsonKey(name: 'business_name')
-  String get businessName => throw _privateConstructorUsedError;
+  String get businessName =>
+      throw _privateConstructorUsedError; // Owner/contact name and address are collected at email/password signup
+// but are nullable in the response: Google signups create the account
+// before the profile is filled in, so both come back null for those users.
+  @JsonKey(name: 'owner_name')
+  String? get ownerName => throw _privateConstructorUsedError;
+  @JsonKey(name: 'business_address')
+  String? get businessAddress =>
+      throw _privateConstructorUsedError; // Clothing specializations. Always present (defaults to [] server-side for
+// Google signups and older accounts), so a non-nullable list with a []
+// fallback matches reality without risking a null-parse crash.
+  @JsonKey(name: 'specializations')
+  List<String> get specializations => throw _privateConstructorUsedError;
   String? get phone => throw _privateConstructorUsedError;
   @JsonKey(name: 'logo_url')
   String? get logoUrl => throw _privateConstructorUsedError;
@@ -52,6 +64,9 @@ abstract class $UserCopyWith<$Res> {
       {String id,
       String email,
       @JsonKey(name: 'business_name') String businessName,
+      @JsonKey(name: 'owner_name') String? ownerName,
+      @JsonKey(name: 'business_address') String? businessAddress,
+      @JsonKey(name: 'specializations') List<String> specializations,
       String? phone,
       @JsonKey(name: 'logo_url') String? logoUrl,
       @JsonKey(name: 'auth_provider') String? authProvider,
@@ -77,6 +92,9 @@ class _$UserCopyWithImpl<$Res, $Val extends User>
     Object? id = null,
     Object? email = null,
     Object? businessName = null,
+    Object? ownerName = freezed,
+    Object? businessAddress = freezed,
+    Object? specializations = null,
     Object? phone = freezed,
     Object? logoUrl = freezed,
     Object? authProvider = freezed,
@@ -96,6 +114,18 @@ class _$UserCopyWithImpl<$Res, $Val extends User>
           ? _value.businessName
           : businessName // ignore: cast_nullable_to_non_nullable
               as String,
+      ownerName: freezed == ownerName
+          ? _value.ownerName
+          : ownerName // ignore: cast_nullable_to_non_nullable
+              as String?,
+      businessAddress: freezed == businessAddress
+          ? _value.businessAddress
+          : businessAddress // ignore: cast_nullable_to_non_nullable
+              as String?,
+      specializations: null == specializations
+          ? _value.specializations
+          : specializations // ignore: cast_nullable_to_non_nullable
+              as List<String>,
       phone: freezed == phone
           ? _value.phone
           : phone // ignore: cast_nullable_to_non_nullable
@@ -131,6 +161,9 @@ abstract class _$$UserImplCopyWith<$Res> implements $UserCopyWith<$Res> {
       {String id,
       String email,
       @JsonKey(name: 'business_name') String businessName,
+      @JsonKey(name: 'owner_name') String? ownerName,
+      @JsonKey(name: 'business_address') String? businessAddress,
+      @JsonKey(name: 'specializations') List<String> specializations,
       String? phone,
       @JsonKey(name: 'logo_url') String? logoUrl,
       @JsonKey(name: 'auth_provider') String? authProvider,
@@ -153,6 +186,9 @@ class __$$UserImplCopyWithImpl<$Res>
     Object? id = null,
     Object? email = null,
     Object? businessName = null,
+    Object? ownerName = freezed,
+    Object? businessAddress = freezed,
+    Object? specializations = null,
     Object? phone = freezed,
     Object? logoUrl = freezed,
     Object? authProvider = freezed,
@@ -172,6 +208,18 @@ class __$$UserImplCopyWithImpl<$Res>
           ? _value.businessName
           : businessName // ignore: cast_nullable_to_non_nullable
               as String,
+      ownerName: freezed == ownerName
+          ? _value.ownerName
+          : ownerName // ignore: cast_nullable_to_non_nullable
+              as String?,
+      businessAddress: freezed == businessAddress
+          ? _value.businessAddress
+          : businessAddress // ignore: cast_nullable_to_non_nullable
+              as String?,
+      specializations: null == specializations
+          ? _value._specializations
+          : specializations // ignore: cast_nullable_to_non_nullable
+              as List<String>,
       phone: freezed == phone
           ? _value.phone
           : phone // ignore: cast_nullable_to_non_nullable
@@ -203,11 +251,16 @@ class _$UserImpl implements _User {
       {required this.id,
       required this.email,
       @JsonKey(name: 'business_name') required this.businessName,
+      @JsonKey(name: 'owner_name') this.ownerName,
+      @JsonKey(name: 'business_address') this.businessAddress,
+      @JsonKey(name: 'specializations')
+      final List<String> specializations = const <String>[],
       this.phone,
       @JsonKey(name: 'logo_url') this.logoUrl,
       @JsonKey(name: 'auth_provider') this.authProvider,
       @JsonKey(name: 'is_active') required this.isActive,
-      @JsonKey(name: 'created_at') required this.createdAt});
+      @JsonKey(name: 'created_at') required this.createdAt})
+      : _specializations = specializations;
 
   factory _$UserImpl.fromJson(Map<String, dynamic> json) =>
       _$$UserImplFromJson(json);
@@ -219,6 +272,30 @@ class _$UserImpl implements _User {
   @override
   @JsonKey(name: 'business_name')
   final String businessName;
+// Owner/contact name and address are collected at email/password signup
+// but are nullable in the response: Google signups create the account
+// before the profile is filled in, so both come back null for those users.
+  @override
+  @JsonKey(name: 'owner_name')
+  final String? ownerName;
+  @override
+  @JsonKey(name: 'business_address')
+  final String? businessAddress;
+// Clothing specializations. Always present (defaults to [] server-side for
+// Google signups and older accounts), so a non-nullable list with a []
+// fallback matches reality without risking a null-parse crash.
+  final List<String> _specializations;
+// Clothing specializations. Always present (defaults to [] server-side for
+// Google signups and older accounts), so a non-nullable list with a []
+// fallback matches reality without risking a null-parse crash.
+  @override
+  @JsonKey(name: 'specializations')
+  List<String> get specializations {
+    if (_specializations is EqualUnmodifiableListView) return _specializations;
+    // ignore: implicit_dynamic_type
+    return EqualUnmodifiableListView(_specializations);
+  }
+
   @override
   final String? phone;
   @override
@@ -236,7 +313,7 @@ class _$UserImpl implements _User {
 
   @override
   String toString() {
-    return 'User(id: $id, email: $email, businessName: $businessName, phone: $phone, logoUrl: $logoUrl, authProvider: $authProvider, isActive: $isActive, createdAt: $createdAt)';
+    return 'User(id: $id, email: $email, businessName: $businessName, ownerName: $ownerName, businessAddress: $businessAddress, specializations: $specializations, phone: $phone, logoUrl: $logoUrl, authProvider: $authProvider, isActive: $isActive, createdAt: $createdAt)';
   }
 
   @override
@@ -248,6 +325,12 @@ class _$UserImpl implements _User {
             (identical(other.email, email) || other.email == email) &&
             (identical(other.businessName, businessName) ||
                 other.businessName == businessName) &&
+            (identical(other.ownerName, ownerName) ||
+                other.ownerName == ownerName) &&
+            (identical(other.businessAddress, businessAddress) ||
+                other.businessAddress == businessAddress) &&
+            const DeepCollectionEquality()
+                .equals(other._specializations, _specializations) &&
             (identical(other.phone, phone) || other.phone == phone) &&
             (identical(other.logoUrl, logoUrl) || other.logoUrl == logoUrl) &&
             (identical(other.authProvider, authProvider) ||
@@ -260,8 +343,19 @@ class _$UserImpl implements _User {
 
   @JsonKey(includeFromJson: false, includeToJson: false)
   @override
-  int get hashCode => Object.hash(runtimeType, id, email, businessName, phone,
-      logoUrl, authProvider, isActive, createdAt);
+  int get hashCode => Object.hash(
+      runtimeType,
+      id,
+      email,
+      businessName,
+      ownerName,
+      businessAddress,
+      const DeepCollectionEquality().hash(_specializations),
+      phone,
+      logoUrl,
+      authProvider,
+      isActive,
+      createdAt);
 
   /// Create a copy of User
   /// with the given fields replaced by the non-null parameter values.
@@ -284,6 +378,9 @@ abstract class _User implements User {
           {required final String id,
           required final String email,
           @JsonKey(name: 'business_name') required final String businessName,
+          @JsonKey(name: 'owner_name') final String? ownerName,
+          @JsonKey(name: 'business_address') final String? businessAddress,
+          @JsonKey(name: 'specializations') final List<String> specializations,
           final String? phone,
           @JsonKey(name: 'logo_url') final String? logoUrl,
           @JsonKey(name: 'auth_provider') final String? authProvider,
@@ -299,7 +396,22 @@ abstract class _User implements User {
   String get email;
   @override
   @JsonKey(name: 'business_name')
-  String get businessName;
+  String
+      get businessName; // Owner/contact name and address are collected at email/password signup
+// but are nullable in the response: Google signups create the account
+// before the profile is filled in, so both come back null for those users.
+  @override
+  @JsonKey(name: 'owner_name')
+  String? get ownerName;
+  @override
+  @JsonKey(name: 'business_address')
+  String?
+      get businessAddress; // Clothing specializations. Always present (defaults to [] server-side for
+// Google signups and older accounts), so a non-nullable list with a []
+// fallback matches reality without risking a null-parse crash.
+  @override
+  @JsonKey(name: 'specializations')
+  List<String> get specializations;
   @override
   String? get phone;
   @override

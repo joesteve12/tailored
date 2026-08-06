@@ -11,6 +11,7 @@ class OrderListState {
     this.items = const [],
     this.page = 1,
     this.total = 0,
+    this.query,
     this.orderStatus,
     this.paymentStatus,
     this.clientId,
@@ -24,6 +25,11 @@ class OrderListState {
   final List<Order> items;
   final int page;
   final int total;
+
+  /// Free-text search term. When non-null/non-empty the notifier fetches
+  /// from `/orders/search` instead of `/orders`; the active filters still
+  /// apply on top of it.
+  final String? query;
   final String? orderStatus;
   final String? paymentStatus;
   final String? clientId;
@@ -46,6 +52,7 @@ class OrderListState {
     List<Order>? items,
     int? page,
     int? total,
+    String? query,
     String? orderStatus,
     String? paymentStatus,
     String? clientId,
@@ -54,6 +61,7 @@ class OrderListState {
     DateTime? dueAfter,
     String? sortBy,
     bool? isLoadingMore,
+    bool clearQuery = false,
     bool clearOrderStatus = false,
     bool clearPaymentStatus = false,
     bool clearClientId = false,
@@ -66,6 +74,7 @@ class OrderListState {
       items: items ?? this.items,
       page: page ?? this.page,
       total: total ?? this.total,
+      query: clearQuery ? null : (query ?? this.query),
       orderStatus: clearOrderStatus ? null : (orderStatus ?? this.orderStatus),
       paymentStatus:
           clearPaymentStatus ? null : (paymentStatus ?? this.paymentStatus),

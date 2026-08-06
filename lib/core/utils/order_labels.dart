@@ -50,6 +50,53 @@ const Map<String, List<String>> kOrderStatusTransitions = {
 List<String> allowedOrderTransitions(String current) =>
     kOrderStatusTransitions[current] ?? const [];
 
+/// The single "happy path" forward move from [current], if there is one —
+/// the transition the status control gives visual priority to. The remaining
+/// allowed transitions (put on hold, cancel, revert) are secondary. Terminal
+/// or unknown statuses return null.
+///
+/// This is deliberately a subset of [kOrderStatusTransitions], not a
+/// reordering of it: the backend still owns which moves are *allowed*; this
+/// only says which allowed move is the obvious next one.
+String? primaryOrderTransition(String current) {
+  switch (current) {
+    case 'pending':
+      return 'in_progress';
+    case 'in_progress':
+      return 'ready';
+    case 'on_hold':
+      return 'in_progress';
+    case 'ready':
+      return 'delivered';
+    default:
+      return null;
+  }
+}
+
+/// Verb-first label for *making* a transition, as opposed to [orderStatusLabel]
+/// which names the resulting state. Used on the status-control menu items so
+/// they read as actions ("Mark ready") rather than nouns ("Ready"). A few
+/// depend on where you're coming from — resuming from a hold and reverting a
+/// finished order both land on 'in_progress' but read differently.
+String orderTransitionActionLabel(String from, String to) {
+  switch (to) {
+    case 'in_progress':
+      if (from == 'on_hold') return 'Resume production';
+      if (from == 'ready') return 'Back to production';
+      return 'Start production';
+    case 'on_hold':
+      return 'Put on hold';
+    case 'ready':
+      return 'Mark ready';
+    case 'delivered':
+      return 'Mark delivered';
+    case 'cancelled':
+      return 'Cancel order';
+    default:
+      return orderStatusLabel(to);
+  }
+}
+
 /// Priority values, lowest → highest. Wire values — render with
 /// [priorityLabel]. Drives the priority selector.
 const List<String> kPriorities = ['low', 'normal', 'high', 'urgent'];
@@ -66,6 +113,25 @@ String priorityLabel(String priority) {
       return 'Urgent';
     default:
       return _titleCase(priority);
+  }
+}
+
+/// Order list sort options. Wire values map to the endpoint's `sort_by`
+/// param (created_at | due_date | priority). `null` means the backend's
+/// default ordering, surfaced to the user as "Newest first".
+const List<String> kOrderSortOptions = ['created_at', 'due_date', 'priority'];
+
+String orderSortLabel(String? sortBy) {
+  switch (sortBy) {
+    case 'created_at':
+    case null:
+      return 'Newest first';
+    case 'due_date':
+      return 'Due date';
+    case 'priority':
+      return 'Priority';
+    default:
+      return _titleCase(sortBy);
   }
 }
 

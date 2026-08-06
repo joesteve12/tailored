@@ -25,6 +25,15 @@ class User with _$User {
     required String id,
     required String email,
     @JsonKey(name: 'business_name') required String businessName,
+    // Owner/contact name and address are collected at email/password signup
+    // but are nullable in the response: Google signups create the account
+    // before the profile is filled in, so both come back null for those users.
+    @JsonKey(name: 'owner_name') String? ownerName,
+    @JsonKey(name: 'business_address') String? businessAddress,
+    // Clothing specializations. Always present (defaults to [] server-side for
+    // Google signups and older accounts), so a non-nullable list with a []
+    // fallback matches reality without risking a null-parse crash.
+    @JsonKey(name: 'specializations') @Default(<String>[]) List<String> specializations,
     String? phone,
     @JsonKey(name: 'logo_url') String? logoUrl,
     @JsonKey(name: 'auth_provider') String? authProvider,
@@ -33,4 +42,17 @@ class User with _$User {
   }) = _User;
 
   factory User.fromJson(Map<String, dynamic> json) => _$UserFromJson(json);
+}
+
+extension UserProfileCompletion on User {
+  /// True once the business has filled in everything registration now collects.
+  /// Google signups (which create the account with an empty business name and
+  /// no owner/address) and accounts created before these fields existed come
+  /// back incomplete; the router sends them through the "complete your profile"
+  /// screen until this returns true.
+  bool get isProfileComplete =>
+      businessName.trim().isNotEmpty &&
+      (ownerName?.trim().isNotEmpty ?? false) &&
+      (businessAddress?.trim().isNotEmpty ?? false) &&
+      specializations.isNotEmpty;
 }
