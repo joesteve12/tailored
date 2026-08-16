@@ -39,7 +39,7 @@ _$TaskSummaryImpl _$$TaskSummaryImplFromJson(Map<String, dynamic> json) =>
       dueAt: json['due_at'] == null
           ? null
           : DateTime.parse(json['due_at'] as String),
-      reminderMinutesBefore: (json['reminder_minutes_before'] as num?)?.toInt(),
+      reminderEnabled: json['reminder_enabled'] as bool?,
       completedAt: json['completed_at'] == null
           ? null
           : DateTime.parse(json['completed_at'] as String),
@@ -67,7 +67,7 @@ Map<String, dynamic> _$$TaskSummaryImplToJson(_$TaskSummaryImpl instance) =>
           instance.expectedCompletionDate?.toIso8601String(),
       'title': instance.title,
       'due_at': instance.dueAt?.toIso8601String(),
-      'reminder_minutes_before': instance.reminderMinutesBefore,
+      'reminder_enabled': instance.reminderEnabled,
       'completed_at': instance.completedAt?.toIso8601String(),
       'is_complete': instance.isComplete,
       'delayed': instance.delayed,

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/models/recipient_ref.dart';
+import '../../../core/theme/app_tokens.dart';
 import '../../../core/widgets/async_error_view.dart';
 import '../data/measurement_repository.dart';
 import '../models/measurement_set.dart';
@@ -16,6 +17,14 @@ class MeasurementSetDetailScreen extends ConsumerWidget {
   const MeasurementSetDetailScreen({super.key, required this.setId});
 
   final String setId;
+
+  static const List<String> _months = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', //
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+  ];
+
+  static String _formatDate(DateTime d) =>
+      '${d.day} ${_months[d.month - 1]} ${d.year}';
 
   RecipientRef _recipientOf(MeasurementSet set) => set.clientId != null
       ? clientRecipient(set.clientId!)
@@ -79,45 +88,87 @@ class MeasurementSetDetailScreen extends ConsumerWidget {
           onRetry: () async => ref.invalidate(measurementSetByIdProvider(setId)),
         ),
         data: (set) {
+          final scheme = Theme.of(context).colorScheme;
+          final tokens = context.appTokens;
           final date = set.takenAt ?? set.createdAt;
-          final dateLabel = '${date.day.toString().padLeft(2, '0')}/'
-              '${date.month.toString().padLeft(2, '0')}/${date.year}';
+          final dateLabel = _formatDate(date);
+          final title =
+              set.label?.isNotEmpty == true ? set.label! : dateLabel;
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              if (set.label?.isNotEmpty == true)
-                Text(set.label!, style: Theme.of(context).textTheme.titleLarge),
-              const SizedBox(height: 4),
-              Text('Taken $dateLabel',
-                  style: Theme.of(context).textTheme.bodyMedium),
-              const SizedBox(height: 16),
+              Text(title, style: Theme.of(context).textTheme.titleLarge),
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  Icon(Icons.event, size: 15, color: tokens.mutedForeground),
+                  const SizedBox(width: 6),
+                  Text(
+                    'Taken $dateLabel',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: tokens.mutedForeground,
+                        ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
               if (set.values.isEmpty)
-                const Text('No values recorded.')
+                Text(
+                  'No values recorded.',
+                  style: TextStyle(color: tokens.mutedForeground),
+                )
               else
-                Card(
+                Container(
+                  decoration: BoxDecoration(
+                    color: scheme.surfaceContainerLow,
+                    borderRadius: BorderRadius.circular(tokens.radiusLg),
+                    border: Border.all(
+                      color: scheme.outlineVariant.withOpacity(0.4),
+                    ),
+                  ),
+                  clipBehavior: Clip.antiAlias,
                   child: Column(
                     children: [
-                      for (var i = 0; i < set.values.length; i++) ...[
-                        if (i > 0) const Divider(height: 1),
-                        ListTile(
-                          dense: true,
-                          title: Text(set.values[i].label),
-                          trailing: Text(
-                            set.values[i].display,
-                            style: Theme.of(context).textTheme.titleMedium,
+                      // Striped rows: alternating rows get a faint tint over
+                      // the container's base color so a long list of numbers
+                      // stays readable across the width without divider lines
+                      // or a header eating space above them.
+                      for (var i = 0; i < set.values.length; i++)
+                        Container(
+                          color: i.isOdd
+                              ? scheme.surfaceContainerHighest
+                                  .withOpacity(0.5)
+                              : Colors.transparent,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 12,
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(child: Text(set.values[i].label)),
+                              const SizedBox(width: 12),
+                              Text(
+                                set.values[i].display,
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .titleMedium
+                                    ?.copyWith(
+                                      fontWeight: tokens.fontWeightMedium,
+                                    ),
+                              ),
+                            ],
                           ),
                         ),
-                      ],
                     ],
                   ),
                 ),
               if (set.notes?.isNotEmpty == true) ...[
-                const SizedBox(height: 16),
+                const SizedBox(height: 20),
                 Text('Notes', style: Theme.of(context).textTheme.titleSmall),
-                const SizedBox(height: 4),
+                const SizedBox(height: 6),
                 Text(set.notes!),
               ],
-              const SizedBox(height: 24),
+              const SizedBox(height: 28),
               OutlinedButton.icon(
                 onPressed: () => _delete(context, ref, set),
                 icon: const Icon(Icons.delete_outline),

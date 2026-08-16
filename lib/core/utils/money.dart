@@ -101,6 +101,26 @@ String trimTrailingZeros(double value) {
   return value.toString();
 }
 
+/// Compact form for tight spaces — `₦148k`, `₦2.4M` — where the exact
+/// figure isn't the point (e.g. a stats strip next to a headline number).
+/// Every other money display in the app uses [formatNaira]; reach for this
+/// one only where full precision would visually overflow.
+String formatCompactNaira(double amount) {
+  final negative = amount < 0;
+  final abs = amount.abs();
+
+  String value;
+  if (abs >= 1000000) {
+    value = '${trimTrailingZeros((abs / 1000000 * 10).round() / 10)}M';
+  } else if (abs >= 1000) {
+    value = '${trimTrailingZeros((abs / 1000 * 10).round() / 10)}k';
+  } else {
+    value = trimTrailingZeros(abs);
+  }
+
+  return '${negative ? _minus : ''}$kNairaSign$value';
+}
+
 /// The em dash used wherever a figure genuinely isn't known — specifically
 /// the balance line on a receipt for a payment recorded before snapshots
 /// existed. Rendering a computed number there would be a confident lie about

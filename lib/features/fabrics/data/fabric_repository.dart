@@ -13,17 +13,36 @@ class FabricRepository {
 
   final Dio _dio;
 
-  /// GET /fabrics?search= → {fabrics, total}. `search` matches serial, fabric
-  /// details, or recipient name (partial, case-insensitive) server-side; an
-  /// empty/blank query returns everything, newest first. Returns just the rows.
-  Future<List<FabricInventoryItem>> list({String? search}) async {
+  /// GET /fabrics?search=&page=&page_size= → {fabrics, total}. `search` matches
+  /// serial, fabric details, or recipient name (partial, case-insensitive)
+  /// server-side; an empty/blank query returns everything, newest first.
+  ///
+  /// Returns the page of rows plus the unfiltered `total` the server reports,
+  /// so the caller can tell when it has reached the end (loaded == total).
+  ///
+  /// UNCONFIRMED ASSUMPTION: that `/fabrics` honours `page` / `page_size` the
+  /// same way `/clients` does. The endpoint already returns `total` (implying a
+  /// paged view), and mirroring the clients contract is the natural fit — but it
+  /// wasn't verified against the handler. If the backend ignores these params it
+  /// degrades safely: page 1 returns everything, `total` equals the row count,
+  /// `hasMore` is false, and the list behaves as it did before (no paging, no
+  /// breakage) — the perf win just doesn't kick in until the backend paginates.
+  Future<({List<FabricInventoryItem> items, int total})> list({
+    String? search,
+    int page = 1,
+    int pageSize = 20,
+  }) async {
     final response = await _dio.get('/fabrics', queryParameters: {
       if (search != null && search.trim().isNotEmpty) 'search': search.trim(),
+      'page': page,
+      'page_size': pageSize,
     });
     final data = response.data as Map<String, dynamic>;
-    return (data['fabrics'] as List)
+    final items = (data['fabrics'] as List)
         .map((e) => FabricInventoryItem.fromJson(e as Map<String, dynamic>))
         .toList();
+    final total = (data['total'] as num?)?.toInt() ?? items.length;
+    return (items: items, total: total);
   }
 
   /// GET /fabrics/{serial} → one fabric plus the order and recipient it's tied

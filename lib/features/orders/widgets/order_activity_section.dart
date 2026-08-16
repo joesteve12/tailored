@@ -492,7 +492,7 @@ class _PaymentRow extends StatelessWidget {
                       _MiniChip(
                         label: payment.receiptNumber!,
                         color: scheme.surfaceContainerHighest,
-                        textColor: scheme.outline,
+                        textColor: context.appTokens.mutedForeground,
                       ),
                     ],
                   ],
@@ -501,7 +501,7 @@ class _PaymentRow extends StatelessWidget {
                 Text(
                   _fmtTimestamp(context, payment.paidAt),
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: scheme.outline,
+                        color: context.appTokens.mutedForeground,
                       ),
                 ),
                 const SizedBox(height: 6),
@@ -769,7 +769,7 @@ class _TaskEventRow extends StatelessWidget {
                 Text(
                   _fmtTimestamp(context, event.createdAt),
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: scheme.outline,
+                        color: context.appTokens.mutedForeground,
                       ),
                 ),
                 const SizedBox(height: 6),
@@ -836,7 +836,7 @@ class _StatusEventRow extends StatelessWidget {
                 Text(
                   _fmtTimestamp(context, event.createdAt),
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: scheme.outline,
+                        color: context.appTokens.mutedForeground,
                       ),
                 ),
                 const SizedBox(height: 6),
@@ -935,7 +935,7 @@ class _EmptyText extends StatelessWidget {
       child: Text(
         text,
         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: Theme.of(context).colorScheme.outline,
+              color: context.appTokens.mutedForeground,
             ),
       ),
     );

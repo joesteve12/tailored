@@ -86,7 +86,7 @@ class _OrderItemFormSheetState extends ConsumerState<OrderItemFormSheet> {
   final _notesController = TextEditingController();
 
   late RecipientRef _recipient;
-  String? _measurementSetId;
+  List<String> _measurementSetIds = const [];
   final List<_FabricDraft> _fabrics = [];
   final List<StagedUpload> _styleRefs = [];
 
@@ -225,7 +225,7 @@ class _OrderItemFormSheetState extends ConsumerState<OrderItemFormSheet> {
         fabrics: [for (final d in _fabrics) d.toInput()],
         recipient: _recipient,
         notes: _notesController.text.trim(),
-        measurementSetId: _measurementSetId,
+        measurementSetIds: _measurementSetIds,
         styleReferences: [
           for (final s in _styleRefs)
             StyleReferenceInput(
@@ -287,7 +287,7 @@ class _OrderItemFormSheetState extends ConsumerState<OrderItemFormSheet> {
               const SizedBox(height: 12),
 
               // ── Garment ──────────────────────────────────────────────────
-              const SectionLabel('Garment'),
+              const SectionLabel('Outfit'),
               const SizedBox(height: 10),
               TextFormField(
                 controller: _garmentController,
@@ -422,16 +422,16 @@ class _OrderItemFormSheetState extends ConsumerState<OrderItemFormSheet> {
                 selected: _recipient,
                 onChanged: (r) => setState(() {
                   _recipient = r;
-                  // Sets belong to a specific recipient — a snapshot picked for
-                  // the previous one no longer applies.
-                  _measurementSetId = null;
+                  // Sets belong to a specific recipient — snapshots picked for
+                  // the previous one no longer apply.
+                  _measurementSetIds = const [];
                 }),
               ),
               const SizedBox(height: 4),
               MeasurementSnapshotField(
                 recipient: _recipient,
-                selectedSetId: _measurementSetId,
-                onChanged: (id) => setState(() => _measurementSetId = id),
+                selectedSetIds: _measurementSetIds,
+                onChanged: (ids) => setState(() => _measurementSetIds = ids),
               ),
               const SizedBox(height: 22),
 
@@ -493,7 +493,7 @@ class _FabricsEditor extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.only(bottom: 8),
             child: Text(
-              'A garment can be cut from one or more fabrics. Add each piece so '
+              'An outfit can be cut from one or more fabrics. Add each piece so '
               'it gets its own tag.',
               style: Theme.of(context).textTheme.bodySmall,
             ),

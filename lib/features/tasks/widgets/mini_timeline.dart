@@ -1,16 +1,18 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/theme/app_tokens.dart';
 import '../models/task_summary.dart';
-import '../utils/task_labels.dart';
 
-/// The horizontal stage timeline on a production task card. Each node
-/// carries its wire state — untouched (empty circle) / in_progress (clock)
-/// / done (filled check) / skipped (dash) — mapped to a glyph in one
-/// place, so a state added on the backend is one switch arm here.
+/// The horizontal stage progress bar on a production task card. Each stage
+/// is a rounded segment with its name beneath it. It reads as a fill: solid
+/// [ColorScheme.primary] once a stage is behind us, a lighter primary for
+/// the stage in hand, and neutral for the stages ahead — one hue, so it
+/// stays inside the app's warm palette instead of importing a second one.
 ///
-/// The completion date under a finished node is intentionally brief
-/// ("22 Jul"); the card sits in a dense list and the filter tab already
-/// tells the user which day is which.
+/// The row SCROLLS horizontally: stage lists are dynamic (the backend
+/// decides how many processes a garment has and what they're called), so a
+/// four-stage suit and a nine-stage gown both get full, uncramped labels
+/// instead of being squeezed to fit the card width.
 class MiniTimeline extends StatelessWidget {
   const MiniTimeline({super.key, required this.stages});
 
@@ -19,127 +21,105 @@ class MiniTimeline extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (stages.isEmpty) return const SizedBox.shrink();
-    final theme = Theme.of(context);
 
-    final children = <Widget>[];
-    for (var i = 0; i < stages.length; i++) {
-      final stage = stages[i];
-      children.add(_Node(stage: stage));
-      if (i != stages.length - 1) {
-        children.add(_Connector(finished: stage.isFinished));
-      }
-    }
-
-    return DefaultTextStyle.merge(
-      style: theme.textTheme.bodySmall ?? const TextStyle(),
-      child: SizedBox(
-        // Two lines: nodes + a caption row for finished dates. Fixed
-        // height so cards in the list scroll uniformly.
-        height: 40,
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: children,
-        ),
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      // A dense list is a vertical scroller; let the finger drag the bar
+      // sideways without the card fighting it for the gesture.
+      physics: const ClampingScrollPhysics(),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (var i = 0; i < stages.length; i++) ...[
+            if (i != 0) const SizedBox(width: 6),
+            _Segment(stage: stages[i]),
+          ],
+        ],
       ),
     );
   }
 }
 
-class _Node extends StatelessWidget {
-  const _Node({required this.stage});
+class _Segment extends StatelessWidget {
+  const _Segment({required this.stage});
 
   final StageBrief stage;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final tokens = context.appTokens;
+    final muted = tokens.mutedForeground;
 
-    late Widget dot;
+    late final Color bar;
+    late final Color label;
+    late final FontWeight weight;
     switch (stage.state) {
       case 'done':
-        dot = Container(
-          width: 20,
-          height: 20,
-          decoration:
-              BoxDecoration(color: scheme.primary, shape: BoxShape.circle),
-          child: Icon(Icons.check, size: 14, color: scheme.onPrimary),
-        );
-        break;
-      case 'skipped':
-        dot = Container(
-          width: 20,
-          height: 20,
-          decoration: BoxDecoration(
-            color: scheme.surfaceContainerHighest,
-            shape: BoxShape.circle,
-            border: Border.all(color: scheme.outline),
-          ),
-          child: Icon(Icons.remove, size: 14, color: scheme.onSurfaceVariant),
-        );
+        // Finished: filled solid with the brand colour.
+        bar = scheme.primary;
+        label = muted;
+        weight = FontWeight.w600;
         break;
       case 'in_progress':
-        dot = Container(
-          width: 20,
-          height: 20,
-          decoration:
-              BoxDecoration(color: scheme.primary, shape: BoxShape.circle),
-          child: Icon(Icons.schedule, size: 14, color: scheme.onPrimary),
-        );
+        // The stage in hand gets its own hue — a warm gold, not just a
+        // paler primary (that was too near the finished segments to tell
+        // apart) — plus the boldest, darkest label, so it's unmistakably
+        // where the work is now.
+        bar = tokens.chart3;
+        label = scheme.onSurface;
+        weight = FontWeight.w700;
+        break;
+      case 'skipped':
+        // Traversed but not worked: a faded primary so the bar still reads
+        // as "past", with a neutral label — it wasn't actually done.
+        bar = scheme.primary.withValues(alpha: 0.3);
+        label = muted;
+        weight = FontWeight.w500;
         break;
       case 'untouched':
       default:
-        dot = Container(
-          width: 20,
-          height: 20,
-          decoration: BoxDecoration(
-            color: Colors.transparent,
-            shape: BoxShape.circle,
-            border: Border.all(color: scheme.outline, width: 1.5),
-          ),
-        );
+        // Ahead of the work: a faint NEUTRAL, so upcoming stages read as
+        // plainly empty and never blend with the warm done/in-progress bars.
+        bar = scheme.onSurface.withValues(alpha: 0.12);
+        label = muted;
+        weight = FontWeight.w500;
     }
 
-    // Caption slot fixed even when empty, so nodes on the same row all
-    // align at their vertical centres regardless of who has a date.
-    final finishedAt = stage.finishedAt;
-    final caption = (stage.isFinished && finishedAt != null)
-        ? Text(
-            taskDueDateLabel(finishedAt.toLocal()),
-            style: TextStyle(fontSize: 10, color: scheme.onSurfaceVariant),
+    return SizedBox(
+      width: 58,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            height: 7,
+            decoration: BoxDecoration(
+              color: bar,
+              borderRadius: BorderRadius.circular(4),
+            ),
+          ),
+          const SizedBox(height: 5),
+          Text(
+            _label(stage.processName),
+            maxLines: 1,
             overflow: TextOverflow.ellipsis,
-          )
-        : const SizedBox.shrink();
-
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        dot,
-        const SizedBox(height: 4),
-        SizedBox(height: 14, child: caption),
-      ],
-    );
-  }
-}
-
-class _Connector extends StatelessWidget {
-  const _Connector({required this.finished});
-
-  /// A connector reads as "traversed" iff the stage BEFORE it is finished
-  /// (worked or skipped) — same rule as the reference UI.
-  final bool finished;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Padding(
-      // Vertical padding aligns the connector line with each dot's centre
-      // (dot is 20 tall, so centre sits at y=10 within the row).
-      padding: const EdgeInsets.only(top: 9),
-      child: Container(
-        width: 16,
-        height: 2,
-        color: finished ? scheme.primary : scheme.outlineVariant,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 11,
+              height: 1.1,
+              color: label,
+              fontWeight: weight,
+            ),
+          ),
+        ],
       ),
     );
+  }
+
+  /// Backend `process_name` is usually already a clean label ("Cut"), but
+  /// capitalise defensively so a lowercase wire value never renders raw.
+  String _label(String name) {
+    if (name.isEmpty) return name;
+    return name[0].toUpperCase() + name.substring(1);
   }
 }

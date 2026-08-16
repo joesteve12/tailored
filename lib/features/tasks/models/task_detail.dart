@@ -57,7 +57,7 @@ class TaskDetail with _$TaskDetail {
     String? title,
     String? notes,
     @JsonKey(name: 'due_at') DateTime? dueAt,
-    @JsonKey(name: 'reminder_minutes_before') int? reminderMinutesBefore,
+    @JsonKey(name: 'reminder_enabled') bool? reminderEnabled,
     @JsonKey(name: 'remind_at') DateTime? remindAt,
     @JsonKey(name: 'completed_at') DateTime? completedAt,
     @JsonKey(name: 'client_id') String? clientId,

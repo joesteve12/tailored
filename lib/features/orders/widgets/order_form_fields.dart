@@ -158,24 +158,32 @@ class DueDateTile extends StatelessWidget {
   }
 }
 
-/// Discount type as a compact three-way segmented toggle (None · ₦ · %) plus a
-/// value field that appears only once a real discount type is chosen. The
-/// backend recomputes the actual `discount_amount`; this just collects the type
-/// and raw value, mirroring the wire enum none/fixed/percentage.
+/// The discount control on a single row: a compact ₦ / % mode toggle on the
+/// left and the value field beside it. Leaving the value **empty means "no
+/// discount"** — there is deliberately no separate "None" option; the empty
+/// field is the off state. The mode only decides how a *present* value is read
+/// (a flat naira amount vs a percentage of the subtotal).
+///
+/// The caller derives the wire discount type from the value: empty or
+/// non-positive → 'none', otherwise the selected [mode]. The backend still
+/// recomputes the authoritative `discount_amount`.
 class DiscountField extends StatelessWidget {
   const DiscountField({
     super.key,
-    required this.type,
+    required this.mode,
     required this.valueController,
-    required this.onTypeChanged,
+    required this.onModeChanged,
   });
 
-  final String type;
+  /// 'fixed' or 'percentage' — never 'none' (an empty value carries that).
+  final String mode;
   final TextEditingController valueController;
-  final ValueChanged<String> onTypeChanged;
+  final ValueChanged<String> onModeChanged;
 
-  static const _segments = <(String, String)>[
-    ('none', 'None'),
+  /// Shared height so the toggle and the field line up exactly.
+  static const double _height = 52;
+
+  static const _modes = <(String, String)>[
     ('fixed', kNairaSign),
     ('percentage', '%'),
   ];
@@ -184,10 +192,10 @@ class DiscountField extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final tokens = context.appTokens;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+    return Row(
       children: [
         Container(
+          height: _height,
           padding: const EdgeInsets.all(4),
           decoration: BoxDecoration(
             color: tokens.inputBackground,
@@ -195,52 +203,53 @@ class DiscountField extends StatelessWidget {
             border: Border.all(color: scheme.outline),
           ),
           child: Row(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              for (final (wire, label) in _segments)
-                Expanded(
-                  child: GestureDetector(
-                    onTap: () => onTypeChanged(wire),
-                    behavior: HitTestBehavior.opaque,
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 140),
-                      padding: const EdgeInsets.symmetric(vertical: 9),
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        color:
-                            type == wire ? scheme.primary : Colors.transparent,
-                        borderRadius: BorderRadius.circular(tokens.radiusSm),
-                      ),
-                      child: Text(
-                        label,
-                        style:
-                            Theme.of(context).textTheme.labelLarge?.copyWith(
-                                  color: type == wire
-                                      ? scheme.onPrimary
-                                      : scheme.onSurfaceVariant,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                      ),
+              for (final (wire, label) in _modes)
+                GestureDetector(
+                  onTap: () => onModeChanged(wire),
+                  behavior: HitTestBehavior.opaque,
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 140),
+                    width: 40,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: mode == wire ? scheme.primary : Colors.transparent,
+                      borderRadius: BorderRadius.circular(tokens.radiusSm),
+                    ),
+                    child: Text(
+                      label,
+                      style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                            color: mode == wire
+                                ? scheme.onPrimary
+                                : scheme.onSurfaceVariant,
+                            fontWeight: FontWeight.w700,
+                          ),
                     ),
                   ),
                 ),
             ],
           ),
         ),
-        if (type != 'none') ...[
-          const SizedBox(height: 12),
-          TextField(
-            controller: valueController,
-            keyboardType:
-                const TextInputType.numberWithOptions(decimal: true),
-            decoration: InputDecoration(
-              prefixText: type == 'fixed' ? '$kNairaSign ' : null,
-              suffixText: type == 'percentage' ? '%' : null,
-              hintText: type == 'percentage' ? 'e.g. 10' : 'e.g. 5000',
-              labelText:
-                  type == 'percentage' ? 'Percentage off' : 'Amount off',
+        const SizedBox(width: 10),
+        Expanded(
+          child: SizedBox(
+            height: _height,
+            child: TextField(
+              controller: valueController,
+              textAlignVertical: TextAlignVertical.center,
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              decoration: InputDecoration(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 14),
+                prefixText: mode == 'fixed' ? '$kNairaSign ' : null,
+                suffixText: mode == 'percentage' ? '%' : null,
+                hintText: 'No discount',
+              ),
             ),
           ),
-        ],
+        ),
       ],
     );
   }

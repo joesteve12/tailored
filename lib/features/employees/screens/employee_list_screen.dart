@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/widgets/async_error_view.dart';
+import '../../../core/widgets/skeleton.dart';
 import '../state/employee_list_notifier.dart';
 
 class EmployeeListScreen extends ConsumerWidget {
@@ -30,7 +31,7 @@ class EmployeeListScreen extends ConsumerWidget {
         ],
       ),
       body: employeesAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
+        loading: () => const SkeletonList(scrollable: true),
         error: (err, _) => AsyncErrorView(
           error: err,
           onRetry: () => notifier.refresh(),

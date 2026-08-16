@@ -110,26 +110,26 @@ class TaskRepository {
     return TaskDetail.fromJson(response.data as Map<String, dynamic>);
   }
 
-  /// PATCH /tasks/{id} for a GENERAL task. The backend clears notes / the
-  /// reminder / a link on an EXPLICIT null, and ignores absent keys — so
-  /// nullable params here mean "leave unchanged" and the `clear…` flags
-  /// put a literal null in the body. Passing both a value and its clear
-  /// flag is a programming error and asserts in debug.
+  /// PATCH /tasks/{id} for a GENERAL task. The backend clears notes / a
+  /// link on an EXPLICIT null, and ignores absent keys — so nullable params
+  /// here mean "leave unchanged" and the `clear…` flags put a literal null
+  /// in the body. The reminder is a plain on/off: [reminderEnabled] null
+  /// leaves it unchanged, true/false turns it on/off (it fires at the due
+  /// time). Passing both a value and its clear flag is a programming error
+  /// and asserts in debug.
   Future<TaskDetail> updateGeneralTask(
     String taskId, {
     String? title,
     String? notes,
     bool clearNotes = false,
     DateTime? dueAt,
-    int? reminderMinutesBefore,
-    bool clearReminder = false,
+    bool? reminderEnabled,
     String? orderId,
     bool clearOrderLink = false,
     String? clientId,
     bool clearClientLink = false,
   }) async {
     assert(!(notes != null && clearNotes));
-    assert(!(reminderMinutesBefore != null && clearReminder));
     assert(!(orderId != null && clearOrderLink));
     assert(!(clientId != null && clearClientLink));
     final body = <String, dynamic>{};
@@ -140,10 +140,8 @@ class TaskRepository {
       body['notes'] = notes;
     }
     if (dueAt != null) body['due_at'] = dueAt.toUtc().toIso8601String();
-    if (clearReminder) {
-      body['reminder_minutes_before'] = null;
-    } else if (reminderMinutesBefore != null) {
-      body['reminder_minutes_before'] = reminderMinutesBefore;
+    if (reminderEnabled != null) {
+      body['reminder_enabled'] = reminderEnabled;
     }
     if (clearOrderLink) {
       body['order_id'] = null;

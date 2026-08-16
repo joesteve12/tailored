@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/theme/app_tokens.dart';
 import '../models/order_addon.dart';
 
 /// Collects a chargeable extra. Returns an [AddonDraft] via `Navigator.pop`,
@@ -134,9 +135,9 @@ class _AddonFormSheetState extends State<AddonFormSheet> {
               const SizedBox(height: 4),
               Text(
                 'Delivery, a rush fee, embroidery — anything billed that '
-                "isn't a garment.",
+                "isn't an outfit.",
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.outline,
+                      color: context.appTokens.mutedForeground,
                     ),
               ),
               const SizedBox(height: 16),

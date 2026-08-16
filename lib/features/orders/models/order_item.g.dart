@@ -21,7 +21,10 @@ _$OrderItemImpl _$$OrderItemImplFromJson(Map<String, dynamic> json) =>
       recipientType: json['recipient_type'] as String,
       recipientClientId: json['recipient_client_id'] as String?,
       guestRecipientId: json['guest_recipient_id'] as String?,
-      measurementSetId: json['measurement_set_id'] as String?,
+      measurementSetIds: (json['measurement_set_ids'] as List<dynamic>?)
+              ?.map((e) => e as String)
+              .toList() ??
+          const <String>[],
       production:
           ItemProduction.fromJson(json['production'] as Map<String, dynamic>),
       styleReferences: (json['style_references'] as List<dynamic>?)
@@ -42,7 +45,7 @@ Map<String, dynamic> _$$OrderItemImplToJson(_$OrderItemImpl instance) =>
       'recipient_type': instance.recipientType,
       'recipient_client_id': instance.recipientClientId,
       'guest_recipient_id': instance.guestRecipientId,
-      'measurement_set_id': instance.measurementSetId,
+      'measurement_set_ids': instance.measurementSetIds,
       'production': instance.production,
       'style_references': instance.styleReferences,
     };

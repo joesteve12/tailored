@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 
+import '../../../core/theme/app_tokens.dart';
 import '../../../core/utils/errors.dart';
 import '../../orders/models/order.dart';
 import '../models/payment.dart';
@@ -83,7 +84,6 @@ class MoneyDateField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     final now = DateTime.now();
     // Guard against a floor in the future (a backdated-then-corrected row, or
     // clock skew): showDatePicker asserts if firstDate is after lastDate.
@@ -94,7 +94,7 @@ class MoneyDateField extends StatelessWidget {
       title: const Text('Date received'),
       subtitle: Text(
         value == null ? 'Today' : _fmtDate(value!),
-        style: TextStyle(color: scheme.outline),
+        style: TextStyle(color: context.appTokens.mutedForeground),
       ),
       trailing: const Icon(Icons.calendar_today, size: 18),
       onTap: !enabled

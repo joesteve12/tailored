@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/widgets/skeleton.dart';
 import '../models/task_summary.dart';
 import '../state/tasks_providers.dart';
 import '../utils/task_labels.dart';
@@ -164,6 +165,11 @@ class _TasksTabScreenState extends ConsumerState<TasksTabScreen>
           await ref.read(taskListProvider(query).future);
         },
         child: listAsync.when(
+          // Keep the current list on screen while a completion refetches, so
+          // a swiped-away row doesn't flash the whole list to a spinner — the
+          // optimistic removal in _TaskList carries the view until fresh data
+          // lands.
+          skipLoadingOnRefresh: true,
           data: (list) => _TaskList(
             results: list.results,
             emptyState: _EmptyState(filter: _activeFilter, search: _search),
@@ -172,9 +178,137 @@ class _TasksTabScreenState extends ConsumerState<TasksTabScreen>
             error: err,
             onRetry: () => ref.invalidate(taskListProvider(query)),
           ),
-          loading: () =>
-              const Center(child: CircularProgressIndicator()),
+          loading: () => const SkeletonList(
+            scrollable: true,
+            padding: EdgeInsets.fromLTRB(12, 8, 12, 96),
+            separatorHeight: 8,
+            itemBuilder: _taskSkeletonRow,
+          ),
         ),
+      ),
+    );
+  }
+}
+
+/// The Tasks list is mixed — production cards and to-do cards — so its loading
+/// state alternates the two placeholder shapes rather than repeating one, so
+/// the skeleton reads like the list that's about to land.
+Widget _taskSkeletonRow(BuildContext context, int index) => index.isEven
+    ? const _ProductionTaskSkeleton()
+    : const _GeneralTaskSkeleton();
+
+/// Placeholder for a [_ProductionTaskCard]: a thumbnail, a title/recipient/
+/// due-date stack, and the horizontal process-pipeline bar beneath.
+class _ProductionTaskSkeleton extends StatelessWidget {
+  const _ProductionTaskSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Padding(
+      padding: EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Skeleton(width: 68, height: 68, radius: 8),
+              SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    FractionallySizedBox(
+                      alignment: Alignment.centerLeft,
+                      widthFactor: 0.6,
+                      child: Skeleton(height: 14),
+                    ),
+                    SizedBox(height: 8),
+                    FractionallySizedBox(
+                      alignment: Alignment.centerLeft,
+                      widthFactor: 0.45,
+                      child: Skeleton(height: 11),
+                    ),
+                    SizedBox(height: 8),
+                    FractionallySizedBox(
+                      alignment: Alignment.centerLeft,
+                      widthFactor: 0.4,
+                      child: Skeleton(height: 11),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: 12),
+          // Mirrors MiniTimeline: fixed-width segments, each a bar over a label.
+          Row(
+            children: [
+              _PipelineSegmentSkeleton(),
+              SizedBox(width: 6),
+              _PipelineSegmentSkeleton(),
+              SizedBox(width: 6),
+              _PipelineSegmentSkeleton(),
+              SizedBox(width: 6),
+              _PipelineSegmentSkeleton(),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// One segment of the process-pipeline placeholder — a bar over its label,
+/// matching a MiniTimeline `_Segment`'s 58px width.
+class _PipelineSegmentSkeleton extends StatelessWidget {
+  const _PipelineSegmentSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return const SizedBox(
+      width: 58,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Skeleton(height: 7, radius: 4),
+          SizedBox(height: 5),
+          Skeleton(height: 11),
+        ],
+      ),
+    );
+  }
+}
+
+/// Placeholder for a [_GeneralTaskCard]: a title line and a short row of meta
+/// chips (due / reminder / linked order).
+class _GeneralTaskSkeleton extends StatelessWidget {
+  const _GeneralTaskSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Padding(
+      padding: EdgeInsets.fromLTRB(16, 12, 12, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          FractionallySizedBox(
+            alignment: Alignment.centerLeft,
+            widthFactor: 0.7,
+            child: Skeleton(height: 14),
+          ),
+          SizedBox(height: 12),
+          Row(
+            children: [
+              Skeleton(width: 96, height: 11),
+              SizedBox(width: 14),
+              Skeleton(width: 72, height: 11),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -194,7 +328,7 @@ class _SearchField extends StatelessWidget {
       onChanged: onChanged,
       textInputAction: TextInputAction.search,
       decoration: InputDecoration(
-        hintText: 'Search order, garment, client, to-do…',
+        hintText: 'Search order, outfit, client, to-do…',
         prefixIcon: const Icon(Icons.search),
         suffixIcon: controller.text.isEmpty
             ? null
@@ -257,14 +391,43 @@ class _CompletedBanner extends StatelessWidget {
   }
 }
 
-class _TaskList extends StatelessWidget {
+class _TaskList extends StatefulWidget {
   const _TaskList({required this.results, required this.emptyState});
 
   final List<TaskSummary> results;
   final Widget emptyState;
 
   @override
+  State<_TaskList> createState() => _TaskListState();
+}
+
+class _TaskListState extends State<_TaskList> {
+  // Ids of to-dos swiped to complete/reopen but not yet gone from the
+  // provider's data. We hide them the instant the swipe resolves so the row
+  // leaves in one motion; if we instead waited for the refetch, the rebuild
+  // would re-mount the just-dismissed Dismissible and trip its "still in the
+  // tree" assertion.
+  final Set<String> _dismissed = {};
+
+  @override
+  void didUpdateWidget(covariant _TaskList oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Once the refetch drops an id too, stop tracking it — keeps the set
+    // bounded and lets a later reopen re-add the same id cleanly.
+    if (_dismissed.isNotEmpty) {
+      final present = widget.results.map((t) => t.taskId).toSet();
+      _dismissed.removeWhere((id) => !present.contains(id));
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final results = _dismissed.isEmpty
+        ? widget.results
+        : widget.results
+            .where((t) => !_dismissed.contains(t.taskId))
+            .toList(growable: false);
+
     if (results.isEmpty) {
       // ListView so RefreshIndicator still works on empty state.
       return ListView(
@@ -272,7 +435,7 @@ class _TaskList extends StatelessWidget {
         children: [
           SizedBox(
             height: MediaQuery.of(context).size.height * 0.6,
-            child: emptyState,
+            child: widget.emptyState,
           ),
         ],
       );
@@ -281,7 +444,12 @@ class _TaskList extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 96),
       itemCount: results.length,
       separatorBuilder: (_, __) => const SizedBox(height: 8),
-      itemBuilder: (context, i) => TaskCard(task: results[i]),
+      itemBuilder: (context, i) => TaskCard(
+        task: results[i],
+        onDismissed: (id) {
+          if (mounted) setState(() => _dismissed.add(id));
+        },
+      ),
     );
   }
 }

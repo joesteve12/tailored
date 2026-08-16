@@ -176,7 +176,7 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
           children: [
             Text('Stages', style: Theme.of(context).textTheme.titleSmall),
             Text(
-              'Tick the work this garment needs, in any order — arrange '
+              'Tick the work this outfit needs, in any order — arrange '
               'the pipeline below.',
               style:
                   TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
@@ -289,7 +289,7 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
                 child: Text(
                   'Heads up: this is after the order\'s due date '
                   '(${taskDueDateLabel(orderDue!)}). Allowed, but the '
-                  'garment would finish late.',
+                  'outfit would finish late.',
                   style: TextStyle(
                       color: scheme.onErrorContainer, fontSize: 12),
                 ),

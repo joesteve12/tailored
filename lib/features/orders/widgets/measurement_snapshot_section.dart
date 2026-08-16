@@ -2,13 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/theme/app_tokens.dart';
 import '../../../core/utils/errors.dart';
 import '../../measurements/models/measurement_set.dart';
 import '../../measurements/state/measurement_set_providers.dart';
 
 /// The measurement snapshot an order item is cut from, expandable in place.
 ///
-/// An item only carries `measurementSetId`; before this widget, the order
+/// An item only carries `measurementSetIds`; before this widget, the order
 /// screen showed a dead "Cut from saved measurements" chip and the actual
 /// numbers — and the notes, which hold the fit preference the tailor works
 /// from — lived two navigations away. Now the card answers "cut from what?"
@@ -52,7 +53,7 @@ class _MeasurementSnapshotSectionState
             padding: const EdgeInsets.symmetric(vertical: 4),
             child: Row(
               children: [
-                Icon(Icons.straighten_outlined, size: 15, color: scheme.outline),
+                Icon(Icons.straighten_outlined, size: 15, color: context.appTokens.mutedForeground),
                 const SizedBox(width: 4),
                 Expanded(
                   child: Text(
@@ -66,13 +67,13 @@ class _MeasurementSnapshotSectionState
                     style: Theme.of(context)
                         .textTheme
                         .bodySmall
-                        ?.copyWith(color: scheme.outline),
+                        ?.copyWith(color: context.appTokens.mutedForeground),
                   ),
                 ),
                 Icon(
                   _expanded ? Icons.expand_less : Icons.expand_more,
                   size: 18,
-                  color: scheme.outline,
+                  color: context.appTokens.mutedForeground,
                 ),
               ],
             ),
@@ -135,7 +136,6 @@ class _SnapshotBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     final notes = set.notes?.trim() ?? '';
 
     return Column(
@@ -149,7 +149,7 @@ class _SnapshotBody extends StatelessWidget {
               style: Theme.of(context)
                   .textTheme
                   .bodySmall
-                  ?.copyWith(color: scheme.outline),
+                  ?.copyWith(color: context.appTokens.mutedForeground),
             ),
           )
         else
@@ -168,7 +168,7 @@ class _SnapshotBody extends StatelessWidget {
                       style: Theme.of(context)
                           .textTheme
                           .bodySmall
-                          ?.copyWith(color: scheme.outline),
+                          ?.copyWith(color: context.appTokens.mutedForeground),
                     ),
                     TextSpan(
                       text: v.display,
@@ -188,13 +188,13 @@ class _SnapshotBody extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Icon(Icons.sticky_note_2_outlined,
-                    size: 14, color: scheme.outline),
+                    size: 14, color: context.appTokens.mutedForeground),
                 const SizedBox(width: 4),
                 Expanded(
                   child: Text(
                     notes,
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: scheme.outline,
+                          color: context.appTokens.mutedForeground,
                           fontStyle: FontStyle.italic,
                         ),
                   ),

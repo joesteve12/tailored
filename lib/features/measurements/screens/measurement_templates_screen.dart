@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/theme/app_tokens.dart';
 import '../../../core/widgets/async_error_view.dart';
+import '../../../core/widgets/skeleton.dart';
 import '../models/measurement_template.dart';
 import '../state/dictionary_admin_notifiers.dart';
 
@@ -35,7 +37,10 @@ class MeasurementTemplatesScreen extends ConsumerWidget {
         ],
       ),
       body: templatesAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
+        loading: () => SkeletonList(
+          scrollable: true,
+          itemBuilder: (_, __) => const SkeletonTile(hasLeading: false),
+        ),
         error: (err, _) => AsyncErrorView(error: err, onRetry: notifier.refresh),
         data: (templates) {
           if (templates.isEmpty) {
@@ -98,7 +103,7 @@ class _TemplateTile extends StatelessWidget {
           Flexible(child: Text(template.name)),
           if (template.isArchived) ...[
             const SizedBox(width: 8),
-            _Tag(label: 'Archived', color: scheme.outline),
+            _Tag(label: 'Archived', color: context.appTokens.mutedForeground),
           ],
           // A field in this template has since been archived. It no longer
           // renders on the capture form, so the template is quietly shorter
@@ -165,7 +170,7 @@ class _EmptyState extends StatelessWidget {
             ),
             const SizedBox(height: 4),
             Text(
-              'Build a template per garment so the capture form asks for the '
+              'Build a template per outfit so the capture form asks for the '
               'right measurements every time.',
               style: Theme.of(context).textTheme.bodyMedium,
               textAlign: TextAlign.center,

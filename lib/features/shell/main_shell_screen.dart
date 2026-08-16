@@ -22,7 +22,7 @@ const Breakpoint _mdAndUp = Breakpoint(beginWidth: _mdBreakpoint, andUp: true);
 const Breakpoint _never = Breakpoint(beginWidth: double.infinity);
 
 /// The app's persistent adaptive-nav scaffold. Wraps the five top-level tabs
-/// (Home / Orders / Tasks / Customers / Settings) using go_router's
+/// (Home / Orders / Tasks / Customers / More) using go_router's
 /// StatefulNavigationShell, which keeps each tab's navigation stack alive
 /// when switching between them (an IndexedStack under the hood).
 ///
@@ -88,10 +88,14 @@ class MainShell extends StatelessWidget {
           selectedIcon: Icon(Icons.people),
           label: 'Customers',
         ),
+        // "More" — the catch-all hub (dashboard, team, inventory, shop setup,
+        // appearance, account). Renamed from "Settings" because the tab holds
+        // far more than app preferences; the three-dots glyph reads as "more"
+        // rather than the gear's "settings".
         NavigationDestination(
-          icon: Icon(Icons.settings_outlined),
-          selectedIcon: Icon(Icons.settings),
-          label: 'Settings',
+          icon: Icon(Icons.more_horiz),
+          selectedIcon: Icon(Icons.more_horiz),
+          label: 'More',
         ),
       ],
     );

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/models/recipient_ref.dart';
+import '../../../core/theme/app_tokens.dart';
 import '../../../core/widgets/async_error_view.dart';
 import '../data/measurement_repository.dart';
 import '../models/measurement_field.dart';
@@ -13,8 +14,6 @@ import '../state/measurement_dictionary_providers.dart';
 import '../state/measurement_list_notifier.dart';
 import '../state/measurement_set_providers.dart';
 
-
-import '../../../core/utils/errors.dart';
 import '../../../core/widgets/feedback.dart';
 /// Local first-or-null lookup, to avoid pulling in package:collection.
 T? _findById<T>(Iterable<T> items, bool Function(T) test) {
@@ -69,6 +68,10 @@ class _MeasurementCaptureScreenState
   final Map<String, TextEditingController> _controllers = {};
 
   String? _templateId;
+  // Name of the currently selected template, kept so a blank label can default
+  // to it on save. A set is identified by its label; the template is only a
+  // prefill convenience, so "no label" falls back to the template's name.
+  String? _templateName;
   final List<_RowSpec> _rows = [];
   final Set<String> _adHocFieldIds = {};
 
@@ -103,6 +106,7 @@ class _MeasurementCaptureScreenState
     MeasurementTemplate? template,
     List<MeasurementField> allFields,
   ) {
+    _templateName = template?.name;
     final rows = <_RowSpec>[];
     if (template != null) {
       for (final tf in template.fields) {
@@ -121,7 +125,10 @@ class _MeasurementCaptureScreenState
           unit: tf.unit,
           valueType: tf.valueType,
           isRequired: tf.isRequired,
-          removable: false,
+          // A template is prefill, not a lock: its optional fields can be
+          // removed like any ad-hoc field. Only *required* fields stay pinned —
+          // those the shop insists on, and the backend enforces on create.
+          removable: !tf.isRequired,
         ));
       }
     }
@@ -216,6 +223,21 @@ class _MeasurementCaptureScreenState
           }
           return null;
         }
+        // The backend stores every measurement as NUMERIC(6, 2) — magnitude
+        // under 10,000 — regardless of field or unit. Past that it doesn't
+        // reject the value, it 500s (a raw Postgres overflow reaching the app
+        // as an unhandled exception). A mistyped extra digit is the realistic
+        // way this happens, so catch it here with a message the user can act
+        // on instead of a failed save and a stack trace in the server log.
+        if (v.abs() >= 10000) {
+          if (mounted) {
+            showErrorMessage(
+              context,
+              '${row.label}: that value looks too large — check for a typo',
+            );
+          }
+          return null;
+        }
         values.add(MeasurementValueInput(fieldId: row.fieldId, valueNumber: v));
       } else {
         values.add(MeasurementValueInput(fieldId: row.fieldId, valueText: text));
@@ -244,7 +266,11 @@ class _MeasurementCaptureScreenState
 
     try {
       final repo = ref.read(measurementRepositoryProvider);
-      final label = _labelController.text.trim();
+      // A set is identified by its label. If the user left it blank, fall back
+      // to the selected template's name so the list still shows something
+      // meaningful (e.g. "Agbada") rather than just a date.
+      final typedLabel = _labelController.text.trim();
+      final label = typedLabel.isNotEmpty ? typedLabel : (_templateName ?? '');
       final notes = _notesController.text.trim();
 
       if (widget.isEditing) {
@@ -344,47 +370,46 @@ class _MeasurementCaptureScreenState
     List<MeasurementField> allFields,
     List<MeasurementTemplate> templates,
   ) {
-    final templateInList =
-        _templateId != null && templates.any((t) => t.id == _templateId);
     return SafeArea(
       child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          DropdownButtonFormField<String?>(
-            value: templateInList ? _templateId : null,
-            isExpanded: true,
-            decoration: const InputDecoration(
-              labelText: 'Template',
-              border: OutlineInputBorder(),
-            ),
-            items: [
-              const DropdownMenuItem<String?>(
-                value: null,
-                child: Text('None (custom fields)'),
-              ),
-              ...templates.map((t) => DropdownMenuItem<String?>(
-                    value: t.id,
-                    child: Text(t.name),
-                  )),
+          // Label and template are one control now: type a name for the set, or
+          // pick a template — which both prefills the fields and fills the name.
+          // (They served near-identical purposes as two separate inputs.) The
+          // name stays freely editable after a template is chosen, and a blank
+          // name falls back to the template's on save.
+          DropdownMenu<String>(
+            controller: _labelController,
+            expandedInsets: EdgeInsets.zero,
+            requestFocusOnTap: true,
+            enableFilter: false,
+            enableSearch: false,
+            label: const Text('Name'),
+            hintText: 'Name this set, or pick a template',
+            leadingIcon: const Icon(Icons.straighten),
+            dropdownMenuEntries: [
+              for (final t in templates)
+                DropdownMenuEntry<String>(value: t.id, label: t.name),
             ],
-            onChanged: (value) {
-              _templateId = value;
-              final tpl = value == null
-                  ? null
-                  : _findById(templates, (t) => t.id == value);
+            onSelected: (id) {
+              _templateId = id;
+              final tpl =
+                  id == null ? null : _findById(templates, (t) => t.id == id);
               _applyTemplate(tpl, allFields);
             },
           ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _labelController,
-            decoration: const InputDecoration(
-              labelText: 'Label (optional)',
-              hintText: 'e.g. Wedding agbada',
-              border: OutlineInputBorder(),
-            ),
-          ),
           const SizedBox(height: 20),
+          if (_rows.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Text(
+                'Fields',
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      color: context.appTokens.mutedForeground,
+                    ),
+              ),
+            ),
           if (_rows.isEmpty)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 8),
@@ -496,37 +521,127 @@ class _ValueRow extends StatelessWidget {
   final TextEditingController controller;
   final VoidCallback? onRemove;
 
+  /// Display form of a unit for the field's suffix — "inch" reads better as
+  /// the actual symbol than spelled out next to a number.
+  static String _unitSuffix(String unit) {
+    switch (unit) {
+      case 'inch':
+        return '″';
+      case 'none':
+        return '';
+      default:
+        return unit;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final tokens = context.appTokens;
     final isNumber = row.valueType == 'number';
-    final label = row.isRequired ? '${row.label} *' : row.label;
+    final unitSuffix = _unitSuffix(row.unit);
+
+    // The field name reads like a line on a measurement sheet; the value is a
+    // compact filled pill on the right with the unit trailing it. This suits
+    // quick number entry far better than a column of full-width outlined boxes.
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.symmetric(vertical: 7),
       child: Row(
         children: [
           Expanded(
+            child: Text.rich(
+              TextSpan(
+                text: row.label,
+                style: Theme.of(context).textTheme.bodyLarge,
+                children: [
+                  if (row.isRequired)
+                    TextSpan(
+                      text: ' *',
+                      style: TextStyle(color: scheme.error),
+                    ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          SizedBox(
+            width: isNumber ? 100 : 150,
             child: TextField(
               controller: controller,
+              textAlign: TextAlign.right,
               keyboardType: isNumber
                   ? const TextInputType.numberWithOptions(decimal: true)
                   : TextInputType.text,
               inputFormatters: isNumber
                   ? [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))]
                   : null,
+              style: Theme.of(context).textTheme.titleMedium,
               decoration: InputDecoration(
-                labelText: label,
-                border: const OutlineInputBorder(),
                 isDense: true,
-                suffixText: (row.unit != 'none') ? row.unit : null,
+                filled: true,
+                fillColor: tokens.inputBackground,
+                hintText: isNumber ? '0' : null,
+                // A fixed-width suffix slot, not suffixText: suffixText sizes
+                // itself to each unit's glyph width, so "cm" (2 chars) and the
+                // inch mark "″" (1 char) push the number to different x
+                // positions per row. Pinning the slot width — reserved even for
+                // unitless fields — keeps every number's right edge, and every
+                // unit, in the same column top to bottom. suffixIcon (unlike a
+                // manually-toggled overlay) always renders, focused or not.
+                suffixIcon: SizedBox(
+                  width: 30,
+                  child: Text(
+                    unitSuffix,
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: tokens.mutedForeground,
+                        ),
+                  ),
+                ),
+                suffixIconConstraints:
+                    const BoxConstraints(minWidth: 30, minHeight: 0),
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(tokens.radiusSm),
+                  borderSide: BorderSide.none,
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(tokens.radiusSm),
+                  borderSide: BorderSide(color: scheme.primary, width: 1.5),
+                ),
               ),
             ),
           ),
-          if (onRemove != null)
-            IconButton(
-              tooltip: 'Remove',
-              icon: const Icon(Icons.close),
-              onPressed: onRemove,
+          // Fixed-width action slot. Without it, the differing widths of the
+          // remove button, the lock icon and empty space would each shift the
+          // value pill to a slightly different x — the rows would read as
+          // crooked. A fixed slot keeps every pill aligned regardless of what
+          // (if anything) sits in the action position.
+          const SizedBox(width: 8),
+          SizedBox(
+            width: 40,
+            child: Center(
+              child: onRemove != null
+                  ? IconButton(
+                      tooltip: 'Remove',
+                      padding: EdgeInsets.zero,
+                      constraints:
+                          const BoxConstraints(minWidth: 40, minHeight: 40),
+                      icon: const Icon(Icons.close, size: 20),
+                      onPressed: onRemove,
+                    )
+                  // A required field can't be removed; a small lock in the
+                  // action slot explains the absence rather than leaving a gap.
+                  : row.isRequired
+                      ? Icon(
+                          Icons.lock_outline,
+                          size: 18,
+                          color: tokens.mutedForeground,
+                        )
+                      : const SizedBox.shrink(),
             ),
+          ),
         ],
       ),
     );

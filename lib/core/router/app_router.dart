@@ -12,6 +12,7 @@ import '../../features/tasks/screens/task_detail_screen.dart';
 import '../../features/tasks/screens/create_task_screen.dart';
 import '../../features/tasks/screens/processes_screen.dart';
 import '../../features/tasks/tasks_paths.dart';
+import '../../features/calendar/screens/calendar_screen.dart';
 import '../../features/dashboard/screens/dashboard_screen.dart';
 import '../../features/settings/screens/settings_screen.dart';
 import '../../features/clients/models/client.dart';
@@ -21,10 +22,12 @@ import '../../features/clients/screens/client_form_screen.dart';
 import 'hero_page.dart';
 import '../../features/guests/screens/guest_detail_screen.dart';
 import '../../features/guests/screens/guest_form_screen.dart';
+import '../../features/guests/screens/guest_list_screen.dart';
 import '../models/recipient_ref.dart';
 import '../../features/measurements/screens/measurement_capture_screen.dart';
 import '../../features/measurements/screens/measurement_history_screen.dart';
 import '../../features/measurements/screens/measurement_set_detail_screen.dart';
+import '../../features/orders/screens/client_orders_screen.dart';
 import '../../features/orders/screens/order_detail_screen.dart';
 import '../../features/orders/screens/order_form_screen.dart';
 import '../../features/orders/screens/order_list_screen.dart';
@@ -203,6 +206,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         builder: (context, state) =>
             ClientFormScreen(clientId: state.pathParameters['id']),
       ),
+      // The client's full guest roster — the target of the "Guests" figure on
+      // the client detail header (the old embedded section was removed).
+      GoRoute(
+        path: '/clients/:clientId/guests',
+        builder: (context, state) =>
+            GuestListScreen(clientId: state.pathParameters['clientId']!),
+      ),
       GoRoute(
         path: '/clients/:clientId/guests/new',
         builder: (context, state) =>
@@ -222,6 +232,15 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           guestId: state.pathParameters['guestId'],
         ),
       ),
+      // The client's full order history — the "View all" target from the
+      // Orders section on the client detail screen. A full-screen route over
+      // the shell (not the global Orders tab), so the bottom-nav tab keeps its
+      // own filter/scroll state untouched.
+      GoRoute(
+        path: '/clients/:clientId/orders',
+        builder: (context, state) =>
+            ClientOrdersScreen(clientId: state.pathParameters['clientId']!),
+      ),
 
       // Measurements. `new` and `history` carry a RecipientRef via `extra`
       // (pinned by the launching screen); sets are addressable by id.
@@ -232,18 +251,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/measurements/history',
-        builder: (context, state) {
-          // ``?template=<id>`` filters the history to a single template; the
-          // ``kCustomTemplateFilter`` sentinel restricts to sets captured
-          // without any template. Absent/empty query param means the classic
-          // unfiltered view.
-          final raw = state.uri.queryParameters['template'];
-          final filter = (raw == null || raw.isEmpty) ? null : raw;
-          return MeasurementHistoryScreen(
-            recipient: state.extra as RecipientRef,
-            templateFilter: filter,
-          );
-        },
+        builder: (context, state) =>
+            MeasurementHistoryScreen(recipient: state.extra as RecipientRef),
       ),
       GoRoute(
         path: '/measurements/sets/:id',
@@ -260,6 +269,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/dashboard',
         builder: (context, state) => const DashboardScreen(),
+      ),
+
+      // Calendar — a full-screen route over the shell, reached from the Home
+      // tab's calendar mark. Aggregates order deadlines, production hand-offs,
+      // and to-dos into one month view (GET /calendar).
+      GoRoute(
+        path: '/calendar',
+        builder: (context, state) => const CalendarScreen(),
       ),
 
       // Task detail — a full-screen route (over the shell) reached from
@@ -289,8 +306,21 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/orders/:id',
-        builder: (context, state) =>
-            OrderDetailScreen(orderId: state.pathParameters['id']!),
+        // `?tab=outfits|activity|media` preselects a section tab (the
+        // production task header deep-links with `tab=outfits`). Absent or
+        // unknown values land on Overview. `?item=<id>` (paired with
+        // `tab=outfits`) scrolls that garment into view and pulses it, so a
+        // tap-through from a task lands on the exact outfit.
+        builder: (context, state) => OrderDetailScreen(
+          orderId: state.pathParameters['id']!,
+          initialTab: switch (state.uri.queryParameters['tab']) {
+            'outfits' => 1,
+            'activity' => 2,
+            'media' => 3,
+            _ => 0,
+          },
+          highlightItemId: state.uri.queryParameters['item'],
+        ),
       ),
 
       // Fabric inventory: list/search + per-serial detail (reached from Home).

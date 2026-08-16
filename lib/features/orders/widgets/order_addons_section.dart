@@ -3,6 +3,7 @@ import 'dart:ui' show FontFeature;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/theme/app_tokens.dart';
 import '../../../core/utils/money.dart';
 import '../../../core/widgets/feedback.dart';
 import '../models/order.dart';
@@ -206,7 +207,7 @@ class _OrderAddonsSectionState extends ConsumerState<OrderAddonsSection> {
               child: Text(
                 'No extra charges',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: scheme.outline,
+                      color: context.appTokens.mutedForeground,
                     ),
               ),
             )
@@ -366,7 +367,7 @@ class _AddonRow extends StatelessWidget {
                     child: Text(
                       '${addon.quantity} × ${formatNaira(addon.amount)}',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: scheme.outline,
+                            color: context.appTokens.mutedForeground,
                             fontFeatures: const [
                               FontFeature.tabularFigures(),
                             ],

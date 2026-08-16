@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/theme/app_tokens.dart';
 import '../../../core/utils/hero_tags.dart';
 import '../../clients/state/client_detail_notifier.dart';
 
@@ -66,14 +67,14 @@ class OrderClientTile extends ConsumerWidget {
           ),
           orElse: () => CircleAvatar(
             backgroundColor: scheme.surfaceContainerHighest,
-            child: Icon(Icons.person_outline, color: scheme.outline),
+            child: Icon(Icons.person_outline, color: context.appTokens.mutedForeground),
           ),
         ),
         title: clientAsync.when(
           data: (client) => Text(client.name),
           loading: () => Text(
             'Loading…',
-            style: TextStyle(color: scheme.outline),
+            style: TextStyle(color: context.appTokens.mutedForeground),
           ),
           // The client's details didn't load, but the order still belongs to
           // them and the route still works — so offer the trip rather than an

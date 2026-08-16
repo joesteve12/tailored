@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/theme/app_tokens.dart';
 import '../../../core/widgets/async_error_view.dart';
 import '../../../core/widgets/feedback.dart';
 import '../data/measurement_repository.dart';
@@ -356,7 +357,7 @@ class _MeasurementFieldFormScreenState
                   child: Text(
                     'Used in: ${templates.join(', ')}',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Theme.of(context).colorScheme.outline,
+                          color: context.appTokens.mutedForeground,
                         ),
                   ),
                 ),

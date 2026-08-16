@@ -37,7 +37,12 @@ class OrderItem with _$OrderItem {
     @JsonKey(name: 'recipient_type') required String recipientType,
     @JsonKey(name: 'recipient_client_id') String? recipientClientId,
     @JsonKey(name: 'guest_recipient_id') String? guestRecipientId,
-    @JsonKey(name: 'measurement_set_id') String? measurementSetId,
+    // The measurement snapshots this garment is cut from. A multi-piece outfit
+    // (top + skirt) links one set per piece; each set names itself, so the ids
+    // are enough here. Newest-first, matching the backend's ordering.
+    @JsonKey(name: 'measurement_set_ids')
+    @Default(<String>[])
+    List<String> measurementSetIds,
     required ItemProduction production,
     @JsonKey(name: 'style_references')
     @Default(<StyleReference>[])
@@ -92,7 +97,7 @@ class OrderItemInput {
     this.fabrics = const [],
     required this.recipient,
     this.notes,
-    this.measurementSetId,
+    this.measurementSetIds = const [],
     this.styleReferences = const [],
   });
 
@@ -103,7 +108,7 @@ class OrderItemInput {
   final List<FabricInput> fabrics;
   final RecipientRef recipient;
   final String? notes;
-  final String? measurementSetId;
+  final List<String> measurementSetIds;
   final List<StyleReferenceInput> styleReferences;
 
   /// A short summary line for the in-form item list, before the order is
@@ -136,7 +141,8 @@ class OrderItemInput {
         if (recipient.isClient) 'recipient_client_id': recipient.id,
         if (recipient.isGuest) 'guest_recipient_id': recipient.id,
         if (notes != null && notes!.isNotEmpty) 'notes': notes,
-        if (measurementSetId != null) 'measurement_set_id': measurementSetId,
+        if (measurementSetIds.isNotEmpty)
+          'measurement_set_ids': measurementSetIds,
         if (styleReferences.isNotEmpty)
           'style_references':
               styleReferences.map((r) => r.toJson()).toList(),

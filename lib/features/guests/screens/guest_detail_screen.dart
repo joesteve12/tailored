@@ -10,6 +10,7 @@ import '../../measurements/widgets/measurement_list_section.dart';
 import '../data/guest_repository.dart';
 import '../state/guest_detail_notifier.dart';
 import '../state/guest_list_notifier.dart';
+import '../../../core/theme/app_tokens.dart';
 import '../../../core/widgets/async_error_view.dart';
 
 import '../../../core/widgets/feedback.dart';
@@ -224,13 +225,11 @@ class _GuestDetailScreenState extends ConsumerState<GuestDetailScreen> {
                   child: Text(
                     guest.relation!,
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: Theme.of(context).colorScheme.outline,
+                          color: context.appTokens.mutedForeground,
                         ),
                   ),
                 ),
               const SizedBox(height: 24),
-              const Divider(),
-              const SizedBox(height: 8),
               MeasurementListSection(recipient: guestRecipient(guest.id)),
             ],
           ),

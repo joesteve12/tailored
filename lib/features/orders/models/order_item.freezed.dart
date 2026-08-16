@@ -35,9 +35,12 @@ mixin _$OrderItem {
   @JsonKey(name: 'recipient_client_id')
   String? get recipientClientId => throw _privateConstructorUsedError;
   @JsonKey(name: 'guest_recipient_id')
-  String? get guestRecipientId => throw _privateConstructorUsedError;
-  @JsonKey(name: 'measurement_set_id')
-  String? get measurementSetId => throw _privateConstructorUsedError;
+  String? get guestRecipientId =>
+      throw _privateConstructorUsedError; // The measurement snapshots this garment is cut from. A multi-piece outfit
+// (top + skirt) links one set per piece; each set names itself, so the ids
+// are enough here. Newest-first, matching the backend's ordering.
+  @JsonKey(name: 'measurement_set_ids')
+  List<String> get measurementSetIds => throw _privateConstructorUsedError;
   ItemProduction get production => throw _privateConstructorUsedError;
   @JsonKey(name: 'style_references')
   List<StyleReference> get styleReferences =>
@@ -70,7 +73,7 @@ abstract class $OrderItemCopyWith<$Res> {
       @JsonKey(name: 'recipient_type') String recipientType,
       @JsonKey(name: 'recipient_client_id') String? recipientClientId,
       @JsonKey(name: 'guest_recipient_id') String? guestRecipientId,
-      @JsonKey(name: 'measurement_set_id') String? measurementSetId,
+      @JsonKey(name: 'measurement_set_ids') List<String> measurementSetIds,
       ItemProduction production,
       @JsonKey(name: 'style_references') List<StyleReference> styleReferences});
 
@@ -102,7 +105,7 @@ class _$OrderItemCopyWithImpl<$Res, $Val extends OrderItem>
     Object? recipientType = null,
     Object? recipientClientId = freezed,
     Object? guestRecipientId = freezed,
-    Object? measurementSetId = freezed,
+    Object? measurementSetIds = null,
     Object? production = null,
     Object? styleReferences = null,
   }) {
@@ -147,10 +150,10 @@ class _$OrderItemCopyWithImpl<$Res, $Val extends OrderItem>
           ? _value.guestRecipientId
           : guestRecipientId // ignore: cast_nullable_to_non_nullable
               as String?,
-      measurementSetId: freezed == measurementSetId
-          ? _value.measurementSetId
-          : measurementSetId // ignore: cast_nullable_to_non_nullable
-              as String?,
+      measurementSetIds: null == measurementSetIds
+          ? _value.measurementSetIds
+          : measurementSetIds // ignore: cast_nullable_to_non_nullable
+              as List<String>,
       production: null == production
           ? _value.production
           : production // ignore: cast_nullable_to_non_nullable
@@ -193,7 +196,7 @@ abstract class _$$OrderItemImplCopyWith<$Res>
       @JsonKey(name: 'recipient_type') String recipientType,
       @JsonKey(name: 'recipient_client_id') String? recipientClientId,
       @JsonKey(name: 'guest_recipient_id') String? guestRecipientId,
-      @JsonKey(name: 'measurement_set_id') String? measurementSetId,
+      @JsonKey(name: 'measurement_set_ids') List<String> measurementSetIds,
       ItemProduction production,
       @JsonKey(name: 'style_references') List<StyleReference> styleReferences});
 
@@ -224,7 +227,7 @@ class __$$OrderItemImplCopyWithImpl<$Res>
     Object? recipientType = null,
     Object? recipientClientId = freezed,
     Object? guestRecipientId = freezed,
-    Object? measurementSetId = freezed,
+    Object? measurementSetIds = null,
     Object? production = null,
     Object? styleReferences = null,
   }) {
@@ -269,10 +272,10 @@ class __$$OrderItemImplCopyWithImpl<$Res>
           ? _value.guestRecipientId
           : guestRecipientId // ignore: cast_nullable_to_non_nullable
               as String?,
-      measurementSetId: freezed == measurementSetId
-          ? _value.measurementSetId
-          : measurementSetId // ignore: cast_nullable_to_non_nullable
-              as String?,
+      measurementSetIds: null == measurementSetIds
+          ? _value._measurementSetIds
+          : measurementSetIds // ignore: cast_nullable_to_non_nullable
+              as List<String>,
       production: null == production
           ? _value.production
           : production // ignore: cast_nullable_to_non_nullable
@@ -300,11 +303,13 @@ class _$OrderItemImpl extends _OrderItem {
       @JsonKey(name: 'recipient_type') required this.recipientType,
       @JsonKey(name: 'recipient_client_id') this.recipientClientId,
       @JsonKey(name: 'guest_recipient_id') this.guestRecipientId,
-      @JsonKey(name: 'measurement_set_id') this.measurementSetId,
+      @JsonKey(name: 'measurement_set_ids')
+      final List<String> measurementSetIds = const <String>[],
       required this.production,
       @JsonKey(name: 'style_references')
       final List<StyleReference> styleReferences = const <StyleReference>[]})
       : _fabrics = fabrics,
+        _measurementSetIds = measurementSetIds,
         _styleReferences = styleReferences,
         super._();
 
@@ -343,9 +348,22 @@ class _$OrderItemImpl extends _OrderItem {
   @override
   @JsonKey(name: 'guest_recipient_id')
   final String? guestRecipientId;
+// The measurement snapshots this garment is cut from. A multi-piece outfit
+// (top + skirt) links one set per piece; each set names itself, so the ids
+// are enough here. Newest-first, matching the backend's ordering.
+  final List<String> _measurementSetIds;
+// The measurement snapshots this garment is cut from. A multi-piece outfit
+// (top + skirt) links one set per piece; each set names itself, so the ids
+// are enough here. Newest-first, matching the backend's ordering.
   @override
-  @JsonKey(name: 'measurement_set_id')
-  final String? measurementSetId;
+  @JsonKey(name: 'measurement_set_ids')
+  List<String> get measurementSetIds {
+    if (_measurementSetIds is EqualUnmodifiableListView)
+      return _measurementSetIds;
+    // ignore: implicit_dynamic_type
+    return EqualUnmodifiableListView(_measurementSetIds);
+  }
+
   @override
   final ItemProduction production;
   final List<StyleReference> _styleReferences;
@@ -359,7 +377,7 @@ class _$OrderItemImpl extends _OrderItem {
 
   @override
   String toString() {
-    return 'OrderItem(id: $id, garmentType: $garmentType, description: $description, quantity: $quantity, unitPrice: $unitPrice, fabrics: $fabrics, notes: $notes, recipientType: $recipientType, recipientClientId: $recipientClientId, guestRecipientId: $guestRecipientId, measurementSetId: $measurementSetId, production: $production, styleReferences: $styleReferences)';
+    return 'OrderItem(id: $id, garmentType: $garmentType, description: $description, quantity: $quantity, unitPrice: $unitPrice, fabrics: $fabrics, notes: $notes, recipientType: $recipientType, recipientClientId: $recipientClientId, guestRecipientId: $guestRecipientId, measurementSetIds: $measurementSetIds, production: $production, styleReferences: $styleReferences)';
   }
 
   @override
@@ -384,8 +402,8 @@ class _$OrderItemImpl extends _OrderItem {
                 other.recipientClientId == recipientClientId) &&
             (identical(other.guestRecipientId, guestRecipientId) ||
                 other.guestRecipientId == guestRecipientId) &&
-            (identical(other.measurementSetId, measurementSetId) ||
-                other.measurementSetId == measurementSetId) &&
+            const DeepCollectionEquality()
+                .equals(other._measurementSetIds, _measurementSetIds) &&
             (identical(other.production, production) ||
                 other.production == production) &&
             const DeepCollectionEquality()
@@ -406,7 +424,7 @@ class _$OrderItemImpl extends _OrderItem {
       recipientType,
       recipientClientId,
       guestRecipientId,
-      measurementSetId,
+      const DeepCollectionEquality().hash(_measurementSetIds),
       production,
       const DeepCollectionEquality().hash(_styleReferences));
 
@@ -439,7 +457,8 @@ abstract class _OrderItem extends OrderItem {
       @JsonKey(name: 'recipient_type') required final String recipientType,
       @JsonKey(name: 'recipient_client_id') final String? recipientClientId,
       @JsonKey(name: 'guest_recipient_id') final String? guestRecipientId,
-      @JsonKey(name: 'measurement_set_id') final String? measurementSetId,
+      @JsonKey(name: 'measurement_set_ids')
+      final List<String> measurementSetIds,
       required final ItemProduction production,
       @JsonKey(name: 'style_references')
       final List<StyleReference> styleReferences}) = _$OrderItemImpl;
@@ -473,10 +492,13 @@ abstract class _OrderItem extends OrderItem {
   String? get recipientClientId;
   @override
   @JsonKey(name: 'guest_recipient_id')
-  String? get guestRecipientId;
+  String?
+      get guestRecipientId; // The measurement snapshots this garment is cut from. A multi-piece outfit
+// (top + skirt) links one set per piece; each set names itself, so the ids
+// are enough here. Newest-first, matching the backend's ordering.
   @override
-  @JsonKey(name: 'measurement_set_id')
-  String? get measurementSetId;
+  @JsonKey(name: 'measurement_set_ids')
+  List<String> get measurementSetIds;
   @override
   ItemProduction get production;
   @override

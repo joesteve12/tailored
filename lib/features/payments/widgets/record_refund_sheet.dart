@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/theme/app_tokens.dart';
 import '../../../core/utils/money.dart';
 import '../../../core/utils/payment_labels.dart';
 import '../../../core/widgets/feedback.dart';
@@ -146,7 +147,7 @@ class _RecordRefundSheetState extends ConsumerState<RecordRefundSheet> {
                 'Money leaving the shop. '
                 'Received so far: ${formatNaira(widget.maxAmount)}',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: scheme.outline,
+                      color: context.appTokens.mutedForeground,
                     ),
               ),
               const SizedBox(height: 16),

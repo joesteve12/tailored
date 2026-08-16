@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/theme/app_tokens.dart';
 import '../../../core/utils/money.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../orders/models/order_item.dart';
+import '../../orders/state/order_detail_notifier.dart';
+import '../../orders/widgets/measurement_snapshot_section.dart';
 import '../models/task_detail.dart';
 import '../models/task_stage.dart';
 import '../state/task_detail_notifier.dart';
@@ -73,7 +77,7 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
             builder: (ctx) => AlertDialog(
               title: const Text('All stages done'),
               content: const Text(
-                  'This garment has finished its pipeline. If it was the '
+                  'This outfit has finished its pipeline. If it was the '
                   'last one, the order has moved to Ready.'),
               actions: [
                 TextButton(
@@ -320,7 +324,10 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
                   children: [
                     _ProductionHeader(task: task),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 24),
+                    const _SectionLabel(
+                        icon: Icons.timeline_outlined, text: 'Production'),
+                    const SizedBox(height: 12),
                     StageTimeline(
                       task: task,
                       busyStageId: _busyStageId,
@@ -337,7 +344,7 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
                         onRemove: _removeStage,
                       ),
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 4),
                     Align(
                       alignment: Alignment.centerLeft,
                       child: TextButton.icon(
@@ -346,7 +353,7 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
                         label: const Text('Add stage'),
                       ),
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 12),
                     _EventsSection(task: task),
                   ],
                 ),
@@ -402,6 +409,18 @@ class _ScreenMenu extends StatelessWidget {
   }
 }
 
+/// The garment identity card at the top of a production task. Two stacked
+/// regions in one card:
+///
+///  * the **top** — thumbnail, code, garment, recipient, qty×price, and a
+///    trailing chevron — is a tap target that opens the parent order on its
+///    Outfits tab with this item highlighted (`?tab=outfits&item=<id>`), so
+///    the task and the outfit it belongs to are one hop apart; and
+///  * the **bottom** — the measurement snapshot the garment is cut from,
+///    resolved from the parent order and expandable in place.
+///
+/// The measurement half lives here (rather than as its own section lower
+/// down) so "what is this?" and "what's it cut from?" sit together.
 class _ProductionHeader extends StatelessWidget {
   const _ProductionHeader({required this.task});
 
@@ -410,58 +429,228 @@ class _ProductionHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final tokens = context.appTokens;
     final thumbnail = task.thumbnailUrl;
+    final orderId = task.orderId;
+    final orderItemId = task.orderItemId;
+    final canOpenOrder = orderId != null;
 
     return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Row(
-          children: [
-            Container(
-              width: 64,
-              height: 64,
-              decoration: BoxDecoration(
-                color: scheme.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(8),
-                image: (thumbnail != null && thumbnail.isNotEmpty)
-                    ? DecorationImage(
-                        image: NetworkImage(thumbnail), fit: BoxFit.cover)
-                    : null,
-              ),
-              child: (thumbnail == null || thumbnail.isEmpty)
-                  ? Icon(Icons.checkroom_outlined,
-                      color: scheme.onSurfaceVariant)
-                  : null,
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // ── Top: identity + tap-through to the order (highlighting the item)
+          InkWell(
+            onTap: canOpenOrder
+                ? () => context.push(
+                      '/orders/$orderId?tab=outfits'
+                      '${orderItemId != null ? '&item=$orderItemId' : ''}',
+                    )
+                : null,
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  Text(task.codeLabel ?? '',
-                      style: Theme.of(context)
-                          .textTheme
-                          .labelMedium
-                          ?.copyWith(color: scheme.primary)),
-                  Text(task.garmentType ?? '',
-                      style: Theme.of(context)
-                          .textTheme
-                          .titleMedium
-                          ?.copyWith(fontWeight: FontWeight.w600)),
-                  if ((task.recipientName ?? '').isNotEmpty)
-                    Text(task.recipientName!,
-                        style: TextStyle(color: scheme.onSurfaceVariant)),
-                  if (task.quantity != null && task.unitPrice != null)
-                    Text(
-                        '${task.quantity} × ${formatNaira(task.unitPrice!)}',
-                        style: TextStyle(
-                            color: scheme.onSurfaceVariant, fontSize: 12)),
+                  Container(
+                    width: 68,
+                    height: 68,
+                    decoration: BoxDecoration(
+                      color: scheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(tokens.radiusMd),
+                      image: (thumbnail != null && thumbnail.isNotEmpty)
+                          ? DecorationImage(
+                              image: NetworkImage(thumbnail),
+                              fit: BoxFit.cover)
+                          : null,
+                    ),
+                    child: (thumbnail == null || thumbnail.isEmpty)
+                        ? Icon(Icons.checkroom_outlined,
+                            color: tokens.mutedForeground)
+                        : null,
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if ((task.codeLabel ?? '').isNotEmpty)
+                          Text(task.codeLabel!,
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .labelMedium
+                                  ?.copyWith(
+                                    color: scheme.primary,
+                                    fontWeight: FontWeight.w600,
+                                    letterSpacing: 0.3,
+                                  )),
+                        Text(task.garmentType ?? 'Garment',
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleMedium
+                                ?.copyWith(fontWeight: FontWeight.w600)),
+                        if ((task.recipientName ?? '').isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          Row(
+                            children: [
+                              Icon(Icons.person_outline,
+                                  size: 14, color: tokens.mutedForeground),
+                              const SizedBox(width: 4),
+                              Flexible(
+                                child: Text(task.recipientName!,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                        color: tokens.mutedForeground)),
+                              ),
+                            ],
+                          ),
+                        ],
+                        if (task.quantity != null &&
+                            task.unitPrice != null) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                              '${task.quantity} × ${formatNaira(task.unitPrice!)}',
+                              style: TextStyle(
+                                  color: tokens.mutedForeground, fontSize: 12)),
+                        ],
+                      ],
+                    ),
+                  ),
+                  if (canOpenOrder) ...[
+                    const SizedBox(width: 8),
+                    Icon(Icons.chevron_right_rounded,
+                        size: 22, color: tokens.mutedForeground),
+                  ],
                 ],
               ),
             ),
+          ),
+
+          // ── Bottom: the measurement snapshot the garment is cut from.
+          if (canOpenOrder && orderItemId != null) ...[
+            Divider(height: 1, thickness: 1, color: tokens.sidebarBorder),
+            _OutfitMeasurementSection(
+              orderId: orderId,
+              orderItemId: orderItemId,
+            ),
           ],
-        ),
+        ],
       ),
+    );
+  }
+}
+
+/// A quiet section heading — a small icon and an all-caps-ish label in the
+/// muted foreground — used to break the production body into blocks.
+class _SectionLabel extends StatelessWidget {
+  const _SectionLabel({required this.icon, required this.text});
+
+  final IconData icon;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final muted = context.appTokens.mutedForeground;
+    return Row(
+      children: [
+        Icon(icon, size: 16, color: muted),
+        const SizedBox(width: 6),
+        Text(
+          text.toUpperCase(),
+          style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                color: muted,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.6,
+              ),
+        ),
+      ],
+    );
+  }
+}
+
+/// The measurement snapshots the garment is cut from, rendered inside the
+/// header card. A multi-piece outfit (top + skirt) has one snapshot per piece.
+/// The task payload carries the order + item ids but not the set ids, so the
+/// parent order is read (cached — usually already loaded when you arrive from
+/// the order) to resolve the item's `measurementSetIds`, then the shared
+/// [MeasurementSnapshotSection] renders each one's values on demand.
+class _OutfitMeasurementSection extends ConsumerWidget {
+  const _OutfitMeasurementSection({
+    required this.orderId,
+    required this.orderItemId,
+  });
+
+  final String orderId;
+  final String orderItemId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final muted = context.appTokens.mutedForeground;
+    final orderAsync = ref.watch(orderDetailProvider(orderId));
+
+    Widget pad(Widget child) => Padding(
+          padding: const EdgeInsets.fromLTRB(14, 4, 14, 4),
+          child: child,
+        );
+
+    Widget muteRow(String text) => Padding(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          child: Row(
+            children: [
+              Icon(Icons.straighten_outlined, size: 15, color: muted),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(text,
+                    style: Theme.of(context)
+                        .textTheme
+                        .bodySmall
+                        ?.copyWith(color: muted)),
+              ),
+            ],
+          ),
+        );
+
+    return orderAsync.when(
+      skipLoadingOnRefresh: true,
+      loading: () => pad(const Padding(
+        padding: EdgeInsets.symmetric(vertical: 12),
+        child: SizedBox(
+          height: 18,
+          width: 18,
+          child: CircularProgressIndicator(strokeWidth: 2),
+        ),
+      )),
+      error: (_, __) => pad(Row(
+        children: [
+          Expanded(child: muteRow('Could not load measurements.')),
+          TextButton(
+            onPressed: () => ref.invalidate(orderDetailProvider(orderId)),
+            child: const Text('Retry'),
+          ),
+        ],
+      )),
+      data: (order) {
+        OrderItem? item;
+        for (final i in order.items) {
+          if (i.id == orderItemId) {
+            item = i;
+            break;
+          }
+        }
+        final setIds = item?.measurementSetIds ?? const <String>[];
+        if (setIds.isEmpty) {
+          return pad(muteRow('No measurement snapshot for this outfit.'));
+        }
+        return pad(Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            for (final setId in setIds)
+              MeasurementSnapshotSection(setId: setId),
+          ],
+        ));
+      },
     );
   }
 }
@@ -480,53 +669,93 @@ class _TodoBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final tokens = context.appTokens;
     final dueLocal = task.dueAt?.toLocal();
+    final use24h = MediaQuery.alwaysUse24HourFormatOf(context);
+    final overdue = task.delayed && !task.isComplete;
+    final linkText = [
+      if ((task.orderNumber ?? '').isNotEmpty) task.orderNumber!,
+      if ((task.recipientName ?? '').isNotEmpty) task.recipientName!,
+    ].join(' · ');
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
       children: [
-        Text(task.title ?? '(untitled)',
-            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                  decoration:
-                      task.isComplete ? TextDecoration.lineThrough : null,
-                )),
-        const SizedBox(height: 12),
-        if (dueLocal != null)
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading:
-                Icon(Icons.event, color: task.delayed ? scheme.error : null),
-            title: Text(
-                '${taskDueDateLabel(dueLocal)} · ${dueTimeLabel(dueLocal, use24h: MediaQuery.alwaysUse24HourFormatOf(context))}'),
-            subtitle: task.delayed && !task.isComplete
-                ? Text('Delayed', style: TextStyle(color: scheme.error))
-                : null,
-          ),
-        ListTile(
-          contentPadding: EdgeInsets.zero,
-          leading: const Icon(Icons.notifications_active_outlined),
-          title: Text(reminderOffsetLabel(task.reminderMinutesBefore)),
+        // ── Title ──────────────────────────────────────────────────────
+        Text(
+          task.title ?? '(untitled)',
+          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                fontWeight: FontWeight.w600,
+                height: 1.2,
+                decoration:
+                    task.isComplete ? TextDecoration.lineThrough : null,
+                color: task.isComplete ? tokens.mutedForeground : null,
+              ),
         ),
-        if ((task.orderNumber ?? '').isNotEmpty ||
-            (task.recipientName ?? '').isNotEmpty)
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: const Icon(Icons.link),
-            title: Text([
-              if ((task.orderNumber ?? '').isNotEmpty) task.orderNumber!,
-              if ((task.recipientName ?? '').isNotEmpty) task.recipientName!,
-            ].join(' · ')),
-            trailing:
-                (task.orderId != null) ? const Icon(Icons.chevron_right) : null,
-            onTap: task.orderId != null
-                ? () => context.push('/orders/${task.orderId}')
-                : null,
-          ),
-        if ((task.notes ?? '').isNotEmpty) ...[
-          const SizedBox(height: 8),
-          Text(task.notes!, style: TextStyle(color: scheme.onSurfaceVariant)),
-        ],
         const SizedBox(height: 20),
+
+        // ── Details (due / reminder / link) ────────────────────────────
+        Card(
+          margin: EdgeInsets.zero,
+          clipBehavior: Clip.antiAlias,
+          child: Column(
+            children: [
+              if (dueLocal != null)
+                _DetailRow(
+                  icon: Icons.event_outlined,
+                  accent: overdue ? scheme.error : scheme.primary,
+                  label: 'Due',
+                  value:
+                      '${taskDueDateLabel(dueLocal)} · ${dueTimeLabel(dueLocal, use24h: use24h)}',
+                  valueColor: overdue ? scheme.error : null,
+                ),
+              if (dueLocal != null) const _RowDivider(),
+              _DetailRow(
+                icon: task.reminderEnabled == true
+                    ? Icons.notifications_active_outlined
+                    : Icons.notifications_off_outlined,
+                accent: task.reminderEnabled == true
+                    ? scheme.primary
+                    : tokens.mutedForeground,
+                label: 'Reminder',
+                value: task.reminderEnabled == true ? 'On' : 'Off',
+              ),
+              if (linkText.isNotEmpty) ...[
+                const _RowDivider(),
+                _DetailRow(
+                  icon: Icons.link_outlined,
+                  accent: scheme.primary,
+                  label: 'Linked',
+                  value: linkText,
+                  onTap: task.orderId != null
+                      ? () => context.push('/orders/${task.orderId}')
+                      : null,
+                ),
+              ],
+            ],
+          ),
+        ),
+
+        // ── Notes ──────────────────────────────────────────────────────
+        if ((task.notes ?? '').isNotEmpty) ...[
+          const SizedBox(height: 20),
+          const _SectionLabel(icon: Icons.notes_outlined, text: 'Notes'),
+          const SizedBox(height: 8),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: scheme.surfaceContainerHighest.withValues(alpha: 0.4),
+              borderRadius: BorderRadius.circular(tokens.radiusMd),
+            ),
+            child: Text(
+              task.notes!,
+              style: TextStyle(color: scheme.onSurface, height: 1.4),
+            ),
+          ),
+        ],
+
+        const SizedBox(height: 24),
         SizedBox(
           width: double.infinity,
           child: task.isComplete
@@ -538,14 +767,99 @@ class _TodoBody extends StatelessWidget {
               : FilledButton.icon(
                   onPressed: busy ? null : onToggleComplete,
                   icon: const Icon(Icons.check),
-                  label: const Text('Mark done'),
+                  label: const Text('Mark as done'),
                 ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 20),
         _EventsSection(task: task),
       ],
     );
   }
+}
+
+/// One line inside the to-do details card: a tinted icon tile, a muted
+/// label, and the value pushed to the right. Tappable (with a chevron)
+/// when [onTap] is set — used by the linked-order row.
+class _DetailRow extends StatelessWidget {
+  const _DetailRow({
+    required this.icon,
+    required this.accent,
+    required this.label,
+    required this.value,
+    this.valueColor,
+    this.onTap,
+  });
+
+  final IconData icon;
+  final Color accent;
+  final String label;
+  final String value;
+  final Color? valueColor;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final tokens = context.appTokens;
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        child: Row(
+          children: [
+            Container(
+              width: 34,
+              height: 34,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: accent.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(tokens.radiusSm),
+              ),
+              child: Icon(icon, size: 18, color: accent),
+            ),
+            const SizedBox(width: 12),
+            Text(
+              label,
+              style: TextStyle(
+                  color: tokens.mutedForeground,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                value,
+                textAlign: TextAlign.right,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: valueColor ?? scheme.onSurface,
+                      fontWeight: FontWeight.w600,
+                    ),
+              ),
+            ),
+            if (onTap != null) ...[
+              const SizedBox(width: 4),
+              Icon(Icons.chevron_right_rounded,
+                  size: 20, color: tokens.mutedForeground),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// A full-width hairline between [_DetailRow]s.
+class _RowDivider extends StatelessWidget {
+  const _RowDivider();
+
+  @override
+  Widget build(BuildContext context) => Divider(
+        height: 1,
+        thickness: 1,
+        color: Theme.of(context).colorScheme.outlineVariant,
+      );
 }
 
 class _EventsSection extends StatelessWidget {

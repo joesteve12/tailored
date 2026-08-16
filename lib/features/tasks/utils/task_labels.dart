@@ -101,36 +101,10 @@ const List<String> kTaskLiveFilters = [
   'due_tomorrow',
 ];
 
-/// The five reminder offset presets shown in the to-do sheet. Null =
-/// "None" (no reminder). Values are minutes-before-due, matching the
-/// backend's `reminder_minutes_before`.
-const List<({String label, int? minutes})> kReminderPresets = [
-  (label: 'None', minutes: null),
-  (label: '30 minutes before', minutes: 30),
-  (label: '1 hour before', minutes: 60),
-  (label: '2 hours before', minutes: 120),
-  (label: '1 day before', minutes: 60 * 24),
-];
-
-/// The label for a stored `reminder_minutes_before`. Falls back to a
-/// derived form for values that aren't presets (a future edit surface may
-/// permit arbitrary offsets), so a stray value never renders as raw
-/// minutes.
-String reminderOffsetLabel(int? minutesBefore) {
-  if (minutesBefore == null) return 'No reminder';
-  for (final preset in kReminderPresets) {
-    if (preset.minutes == minutesBefore) return preset.label;
-  }
-  if (minutesBefore % (60 * 24) == 0) {
-    final days = minutesBefore ~/ (60 * 24);
-    return '$days ${days == 1 ? 'day' : 'days'} before';
-  }
-  if (minutesBefore % 60 == 0) {
-    final hours = minutesBefore ~/ 60;
-    return '$hours ${hours == 1 ? 'hour' : 'hours'} before';
-  }
-  return '$minutesBefore minutes before';
-}
+/// The label for a to-do's reminder flag (`reminder_enabled`). A reminder
+/// fires at the due time — there is no offset — so it's simply on or off.
+String reminderLabel(bool? enabled) =>
+    enabled == true ? 'Reminder' : 'No reminder';
 
 /// Human date label for a production task's `expected_completion_date` or
 /// a to-do's `due_at` (on cards — the sheet uses a full picker). Compact

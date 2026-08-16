@@ -248,8 +248,8 @@ mixin _$TaskSummary {
   String? get title => throw _privateConstructorUsedError;
   @JsonKey(name: 'due_at')
   DateTime? get dueAt => throw _privateConstructorUsedError;
-  @JsonKey(name: 'reminder_minutes_before')
-  int? get reminderMinutesBefore => throw _privateConstructorUsedError;
+  @JsonKey(name: 'reminder_enabled')
+  bool? get reminderEnabled => throw _privateConstructorUsedError;
   @JsonKey(name: 'completed_at')
   DateTime? get completedAt =>
       throw _privateConstructorUsedError; // Derived flags (both kinds). Buckets come from the server — computed
@@ -293,7 +293,7 @@ abstract class $TaskSummaryCopyWith<$Res> {
       DateTime? expectedCompletionDate,
       String? title,
       @JsonKey(name: 'due_at') DateTime? dueAt,
-      @JsonKey(name: 'reminder_minutes_before') int? reminderMinutesBefore,
+      @JsonKey(name: 'reminder_enabled') bool? reminderEnabled,
       @JsonKey(name: 'completed_at') DateTime? completedAt,
       @JsonKey(name: 'is_complete') bool isComplete,
       bool delayed,
@@ -328,7 +328,7 @@ class _$TaskSummaryCopyWithImpl<$Res, $Val extends TaskSummary>
     Object? expectedCompletionDate = freezed,
     Object? title = freezed,
     Object? dueAt = freezed,
-    Object? reminderMinutesBefore = freezed,
+    Object? reminderEnabled = freezed,
     Object? completedAt = freezed,
     Object? isComplete = null,
     Object? delayed = null,
@@ -381,10 +381,10 @@ class _$TaskSummaryCopyWithImpl<$Res, $Val extends TaskSummary>
           ? _value.dueAt
           : dueAt // ignore: cast_nullable_to_non_nullable
               as DateTime?,
-      reminderMinutesBefore: freezed == reminderMinutesBefore
-          ? _value.reminderMinutesBefore
-          : reminderMinutesBefore // ignore: cast_nullable_to_non_nullable
-              as int?,
+      reminderEnabled: freezed == reminderEnabled
+          ? _value.reminderEnabled
+          : reminderEnabled // ignore: cast_nullable_to_non_nullable
+              as bool?,
       completedAt: freezed == completedAt
           ? _value.completedAt
           : completedAt // ignore: cast_nullable_to_non_nullable
@@ -434,7 +434,7 @@ abstract class _$$TaskSummaryImplCopyWith<$Res>
       DateTime? expectedCompletionDate,
       String? title,
       @JsonKey(name: 'due_at') DateTime? dueAt,
-      @JsonKey(name: 'reminder_minutes_before') int? reminderMinutesBefore,
+      @JsonKey(name: 'reminder_enabled') bool? reminderEnabled,
       @JsonKey(name: 'completed_at') DateTime? completedAt,
       @JsonKey(name: 'is_complete') bool isComplete,
       bool delayed,
@@ -467,7 +467,7 @@ class __$$TaskSummaryImplCopyWithImpl<$Res>
     Object? expectedCompletionDate = freezed,
     Object? title = freezed,
     Object? dueAt = freezed,
-    Object? reminderMinutesBefore = freezed,
+    Object? reminderEnabled = freezed,
     Object? completedAt = freezed,
     Object? isComplete = null,
     Object? delayed = null,
@@ -520,10 +520,10 @@ class __$$TaskSummaryImplCopyWithImpl<$Res>
           ? _value.dueAt
           : dueAt // ignore: cast_nullable_to_non_nullable
               as DateTime?,
-      reminderMinutesBefore: freezed == reminderMinutesBefore
-          ? _value.reminderMinutesBefore
-          : reminderMinutesBefore // ignore: cast_nullable_to_non_nullable
-              as int?,
+      reminderEnabled: freezed == reminderEnabled
+          ? _value.reminderEnabled
+          : reminderEnabled // ignore: cast_nullable_to_non_nullable
+              as bool?,
       completedAt: freezed == completedAt
           ? _value.completedAt
           : completedAt // ignore: cast_nullable_to_non_nullable
@@ -567,7 +567,7 @@ class _$TaskSummaryImpl extends _TaskSummary {
       @JsonKey(name: 'expected_completion_date') this.expectedCompletionDate,
       this.title,
       @JsonKey(name: 'due_at') this.dueAt,
-      @JsonKey(name: 'reminder_minutes_before') this.reminderMinutesBefore,
+      @JsonKey(name: 'reminder_enabled') this.reminderEnabled,
       @JsonKey(name: 'completed_at') this.completedAt,
       @JsonKey(name: 'is_complete') required this.isComplete,
       required this.delayed,
@@ -616,8 +616,8 @@ class _$TaskSummaryImpl extends _TaskSummary {
   @JsonKey(name: 'due_at')
   final DateTime? dueAt;
   @override
-  @JsonKey(name: 'reminder_minutes_before')
-  final int? reminderMinutesBefore;
+  @JsonKey(name: 'reminder_enabled')
+  final bool? reminderEnabled;
   @override
   @JsonKey(name: 'completed_at')
   final DateTime? completedAt;
@@ -646,7 +646,7 @@ class _$TaskSummaryImpl extends _TaskSummary {
 
   @override
   String toString() {
-    return 'TaskSummary(taskId: $taskId, kind: $kind, orderId: $orderId, orderNumber: $orderNumber, itemIndex: $itemIndex, garmentType: $garmentType, recipientName: $recipientName, thumbnailUrl: $thumbnailUrl, expectedCompletionDate: $expectedCompletionDate, title: $title, dueAt: $dueAt, reminderMinutesBefore: $reminderMinutesBefore, completedAt: $completedAt, isComplete: $isComplete, delayed: $delayed, dueToday: $dueToday, dueTomorrow: $dueTomorrow, stages: $stages)';
+    return 'TaskSummary(taskId: $taskId, kind: $kind, orderId: $orderId, orderNumber: $orderNumber, itemIndex: $itemIndex, garmentType: $garmentType, recipientName: $recipientName, thumbnailUrl: $thumbnailUrl, expectedCompletionDate: $expectedCompletionDate, title: $title, dueAt: $dueAt, reminderEnabled: $reminderEnabled, completedAt: $completedAt, isComplete: $isComplete, delayed: $delayed, dueToday: $dueToday, dueTomorrow: $dueTomorrow, stages: $stages)';
   }
 
   @override
@@ -671,8 +671,8 @@ class _$TaskSummaryImpl extends _TaskSummary {
                 other.expectedCompletionDate == expectedCompletionDate) &&
             (identical(other.title, title) || other.title == title) &&
             (identical(other.dueAt, dueAt) || other.dueAt == dueAt) &&
-            (identical(other.reminderMinutesBefore, reminderMinutesBefore) ||
-                other.reminderMinutesBefore == reminderMinutesBefore) &&
+            (identical(other.reminderEnabled, reminderEnabled) ||
+                other.reminderEnabled == reminderEnabled) &&
             (identical(other.completedAt, completedAt) ||
                 other.completedAt == completedAt) &&
             (identical(other.isComplete, isComplete) ||
@@ -700,7 +700,7 @@ class _$TaskSummaryImpl extends _TaskSummary {
       expectedCompletionDate,
       title,
       dueAt,
-      reminderMinutesBefore,
+      reminderEnabled,
       completedAt,
       isComplete,
       delayed,
@@ -738,8 +738,7 @@ abstract class _TaskSummary extends TaskSummary {
       final DateTime? expectedCompletionDate,
       final String? title,
       @JsonKey(name: 'due_at') final DateTime? dueAt,
-      @JsonKey(name: 'reminder_minutes_before')
-      final int? reminderMinutesBefore,
+      @JsonKey(name: 'reminder_enabled') final bool? reminderEnabled,
       @JsonKey(name: 'completed_at') final DateTime? completedAt,
       @JsonKey(name: 'is_complete') required final bool isComplete,
       required final bool delayed,
@@ -785,8 +784,8 @@ abstract class _TaskSummary extends TaskSummary {
   @JsonKey(name: 'due_at')
   DateTime? get dueAt;
   @override
-  @JsonKey(name: 'reminder_minutes_before')
-  int? get reminderMinutesBefore;
+  @JsonKey(name: 'reminder_enabled')
+  bool? get reminderEnabled;
   @override
   @JsonKey(name: 'completed_at')
   DateTime?

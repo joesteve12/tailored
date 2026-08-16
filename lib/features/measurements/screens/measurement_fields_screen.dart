@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/theme/app_tokens.dart';
 import '../../../core/widgets/async_error_view.dart';
+import '../../../core/widgets/skeleton.dart';
 import '../models/measurement_field.dart';
 import '../state/dictionary_admin_notifiers.dart';
 
@@ -37,7 +39,10 @@ class MeasurementFieldsScreen extends ConsumerWidget {
         ],
       ),
       body: fieldsAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
+        loading: () => SkeletonList(
+          scrollable: true,
+          itemBuilder: (_, __) => const SkeletonTile(hasLeading: false),
+        ),
         error: (err, _) => AsyncErrorView(
           error: err,
           onRetry: notifier.refresh,
@@ -116,7 +121,7 @@ class _FieldTile extends StatelessWidget {
           ],
           if (field.isArchived) ...[
             const SizedBox(width: 8),
-            _Tag(label: 'Archived', color: scheme.outline),
+            _Tag(label: 'Archived', color: context.appTokens.mutedForeground),
           ],
         ],
       ),

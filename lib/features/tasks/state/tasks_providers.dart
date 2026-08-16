@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/utils/fake_latency.dart';
 import '../../orders/state/order_detail_notifier.dart';
 import '../../orders/state/status_events_providers.dart';
 import '../data/task_repository.dart';
@@ -25,7 +26,8 @@ typedef TaskListQuery = ({String filter, String? search, String? kind});
 /// invalidates this family wholesale, so every visible filter tab
 /// refetches consistently.
 final taskListProvider = FutureProvider.autoDispose
-    .family<TaskListResponse, TaskListQuery>((ref, query) {
+    .family<TaskListResponse, TaskListQuery>((ref, query) async {
+  await fakeLatency(); // no-op unless kFakeLatency is on in a debug build
   final now = DateTime.now();
   return ref.read(taskRepositoryProvider).list(
         filter: query.filter,
@@ -38,7 +40,8 @@ final taskListProvider = FutureProvider.autoDispose
 
 /// The Home tab's Production chips (both kinds, same date semantics).
 final taskSummaryProvider =
-    FutureProvider.autoDispose<TaskSummaryCounts>((ref) {
+    FutureProvider.autoDispose<TaskSummaryCounts>((ref) async {
+  await fakeLatency(); // no-op unless kFakeLatency is on in a debug build
   final now = DateTime.now();
   return ref.read(taskRepositoryProvider).summary(
         today: now,

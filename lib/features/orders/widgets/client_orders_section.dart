@@ -2,27 +2,22 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../core/theme/app_tokens.dart';
-import '../../../core/utils/order_labels.dart';
 import '../../../core/utils/money.dart';
+import '../../../core/utils/order_labels.dart';
 import '../../../core/utils/payment_labels.dart';
 import '../../../core/widgets/async_error_view.dart';
-import '../models/order.dart';
 import '../state/client_orders_providers.dart';
+import 'order_card.dart';
 
 /// Embeddable "Orders" block for the client detail screen. Lists this
-/// client's orders newest-first, with the same header + action-button
-/// pattern the Guests and Measurements sections use. Tapping a row opens
-/// the order detail; the icon button starts a new order pre-filled with
-/// this client.
+/// client's orders newest-first. Tapping a row opens the order detail;
+/// starting a new order for this client is the screen-level "New order"
+/// FAB, not a control in this section.
 ///
-/// Row styling (status pill colors/icons, payment icon+label, card
-/// treatment) intentionally mirrors `_OrderCard` in order_list_screen.dart
-/// so an order looks the same whether it's seen from the main Orders tab
-/// or from inside a client. The status/payment meta helpers below are a
-/// deliberate duplication of that file's — if a third place ever needs the
-/// same mapping, pull them into a shared `order_status_meta.dart` instead
-/// of copying a third time.
+/// Rows render with the shared [OrderCard] so an order looks the same
+/// whether it's seen from the main Orders tab or from inside a client. The
+/// one difference: the card's secondary line carries the order total here
+/// (the client is already the context) instead of the client name.
 class ClientOrdersSection extends ConsumerWidget {
   const ClientOrdersSection({super.key, required this.clientId});
 
@@ -39,27 +34,11 @@ class ClientOrdersSection extends ConsumerWidget {
       children: [
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'Orders',
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              IconButton.filledTonal(
-                icon: const Icon(Icons.add_shopping_cart_rounded, size: 20),
-                tooltip: 'New order',
-                onPressed: () => context.push('/orders/new', extra: clientId),
-                style: IconButton.styleFrom(
-                  backgroundColor: scheme.primaryContainer.withOpacity(0.35),
-                  foregroundColor: scheme.primary,
-                  minimumSize: const Size(38, 38),
-                  padding: EdgeInsets.zero,
-                ),
-              ),
-            ],
+          child: Text(
+            'Orders',
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
           ),
         ),
         const SizedBox(height: 12),
@@ -80,19 +59,38 @@ class ClientOrdersSection extends ConsumerWidget {
                   ref.invalidate(clientOrdersProvider(clientId)),
             ),
           ),
-          data: (orders) {
+          data: (response) {
+            final orders = response.results;
             if (orders.isEmpty) {
               return _SectionSurface(
                 scheme: scheme,
                 child: const _EmptyOrders(),
               );
             }
+            // This section shows only the first page; when the client has more
+            // orders than that, a "View all" link opens the fully-paginated
+            // client orders screen rather than trying to load-more inline.
+            final hasMore = response.total > orders.length;
             return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                for (var i = 0; i < orders.length; i++) ...[
-                  if (i > 0) const SizedBox(height: 10),
-                  _OrderRow(order: orders[i]),
-                ],
+                for (final order in orders)
+                  OrderCard(
+                    orderNumber: order.orderNumber,
+                    subtitle: formatNaira(order.totalAmount),
+                    dueDate: order.dueDate,
+                    paymentStatus: order.paymentStatus,
+                    paymentStatusLabel: paymentStatusLabel(order.paymentStatus),
+                    status: order.status,
+                    statusLabel: orderStatusLabel(order.status),
+                    priority: order.priority,
+                    onTap: () => context.push('/orders/${order.id}'),
+                  ),
+                if (hasMore)
+                  _ViewAllOrdersButton(
+                    clientId: clientId,
+                    total: response.total,
+                  ),
               ],
             );
           },
@@ -125,313 +123,30 @@ class _SectionSurface extends StatelessWidget {
   }
 }
 
-const _shortMonths = [
-  'Jan',
-  'Feb',
-  'Mar',
-  'Apr',
-  'May',
-  'Jun',
-  'Jul',
-  'Aug',
-  'Sep',
-  'Oct',
-  'Nov',
-  'Dec',
-];
+/// Footer link shown when the section is only a first-page preview of a
+/// longer history — opens the fully-paginated client orders screen.
+class _ViewAllOrdersButton extends StatelessWidget {
+  const _ViewAllOrdersButton({required this.clientId, required this.total});
 
-class _OrderRow extends StatelessWidget {
-  const _OrderRow({required this.order});
-
-  final Order order;
+  final String clientId;
+  final int total;
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-
-    final due = order.dueDate;
-    final overdue = due.isBefore(DateTime.now());
-    final dueLabel = '${_shortMonths[due.month - 1]} ${due.day}';
-    final total = formatNaira(order.totalAmount);
-    final paymentMeta = _paymentMeta(order.paymentStatus, scheme);
-    final isElevatedPriority =
-        order.priority == 'high' || order.priority == 'urgent';
-    final priorityColor =
-        isElevatedPriority ? _priorityColor(order.priority, scheme) : null;
-
-    return Container(
-      width: double.infinity,
-      clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(
-        color: scheme.surfaceContainerLowest,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: scheme.outlineVariant.withOpacity(0.18)),
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: () => context.push('/orders/${order.id}'),
-          child: IntrinsicHeight(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                if (isElevatedPriority)
-                  Container(width: 4, color: priorityColor),
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.all(14),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Identity + status: the two things worth scanning first.
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(
-                              child: Text(
-                                order.orderNumber,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: theme.textTheme.titleSmall?.copyWith(
-                                  fontWeight: FontWeight.w700,
-                                  fontFeatures: const [
-                                    FontFeature.tabularFigures(),
-                                  ],
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            _StatusPill(
-                              status: order.status,
-                              label: orderStatusLabel(order.status),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 10),
-                        // Price gets its own line — it's the second most
-                        // important fact on the card and was previously
-                        // the same visual weight as payment status.
-                        Text(
-                          total,
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w700,
-                            fontFeatures: const [
-                              FontFeature.tabularFigures(),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        // One consistent chip language for all order
-                        // metadata, instead of three different text
-                        // treatments competing for attention.
-                        Row(
-                          children: [
-                            _MetaChip(
-                              icon: paymentMeta.icon,
-                              label:
-                                  paymentStatusLabel(order.paymentStatus),
-                              color: paymentMeta.color,
-                            ),
-                            const Spacer(),
-                            _MetaChip(
-                              icon: Icons.event_outlined,
-                              label: 'Due $dueLabel',
-                              color: overdue
-                                  ? StatusColors.urgent
-                                  : scheme.onSurfaceVariant,
-                              emphasized: overdue,
-                            ),
-                            const SizedBox(width: 8),
-                            Icon(Icons.chevron_right,
-                                size: 20, color: scheme.outlineVariant),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
+    return Padding(
+      padding: const EdgeInsets.only(top: 2, bottom: 4),
+      child: TextButton(
+        onPressed: () => context.push('/clients/$clientId/orders'),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('View all $total orders'),
+            const SizedBox(width: 4),
+            const Icon(Icons.arrow_forward, size: 16),
+          ],
         ),
       ),
     );
-  }
-}
-
-/// Small colored pill used for payment status, due date, and priority —
-/// one shared visual language for order metadata instead of three
-/// different treatments (plain icon+text x2, standalone tag x1).
-class _MetaChip extends StatelessWidget {
-  const _MetaChip({
-    required this.icon,
-    required this.label,
-    required this.color,
-    this.emphasized = false,
-  });
-
-  final IconData icon;
-  final String label;
-  final Color color;
-  final bool emphasized;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: color.withOpacity(emphasized ? 0.16 : 0.10),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 12, color: color),
-          const SizedBox(width: 4),
-          Text(
-            label,
-            style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                  color: color,
-                  fontWeight: emphasized ? FontWeight.w700 : FontWeight.w600,
-                ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Color+icon coded pill for the known status enum (pending, in progress,
-/// on hold, delivered, cancelled). Falls back to a neutral outlined pill
-/// for any status value outside that set, so new/unrecognized statuses
-/// degrade gracefully instead of guessing a color for them. Kept in sync
-/// with `_StatusPill` in order_list_screen.dart.
-class _StatusPill extends StatelessWidget {
-  const _StatusPill({required this.status, required this.label});
-
-  final String status;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final meta = _statusMeta(status, scheme);
-
-    if (meta.isFallback) {
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-        decoration: BoxDecoration(
-          border: Border.all(color: scheme.outlineVariant),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Text(
-          label,
-          style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: scheme.onSurfaceVariant,
-                fontWeight: FontWeight.w600,
-              ),
-        ),
-      );
-    }
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: meta.color.withOpacity(0.14),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(meta.icon, size: 12, color: meta.color),
-          const SizedBox(width: 4),
-          Text(
-            label,
-            style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                  color: meta.color,
-                  fontWeight: FontWeight.w700,
-                ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _StatusMeta {
-  const _StatusMeta(this.color, this.icon, {this.isFallback = false});
-  final Color color;
-  final IconData icon;
-  final bool isFallback;
-}
-
-/// Maps the known status enum to a color + icon, matching normalization
-/// (lowercased, separators stripped) and palette used in
-/// order_list_screen.dart's `_statusMeta`.
-_StatusMeta _statusMeta(String status, ColorScheme scheme) {
-  final key = status.toLowerCase().replaceAll(RegExp(r'[^a-z]'), '');
-  switch (key) {
-    case 'pending':
-      return const _StatusMeta(
-          StatusColors.orderPending, Icons.schedule_rounded);
-    case 'inprogress':
-      return const _StatusMeta(
-          StatusColors.orderInProgress, Icons.autorenew_rounded);
-    case 'onhold':
-      return const _StatusMeta(
-          StatusColors.orderOnHold, Icons.pause_circle_rounded);
-    case 'ready':
-      return const _StatusMeta(StatusColors.orderReady, Icons.task_alt_rounded);
-    case 'delivered':
-      return const _StatusMeta(
-          StatusColors.orderDelivered, Icons.check_circle_rounded);
-    case 'cancelled':
-    case 'canceled':
-      return _StatusMeta(StatusColors.cancelled(scheme), Icons.cancel_rounded);
-    default:
-      return _StatusMeta(scheme.onSurfaceVariant, Icons.circle,
-          isFallback: true);
-  }
-}
-
-/// Maps the payment status to a color + icon, mirroring `_paymentMeta` in
-/// order_list_screen.dart. Unpaid stays neutral — it's the default state,
-/// not a problem state.
-class _PaymentMeta {
-  const _PaymentMeta(this.color, this.icon);
-  final Color color;
-  final IconData icon;
-}
-
-_PaymentMeta _paymentMeta(String paymentStatus, ColorScheme scheme) {
-  final key = paymentStatus.toLowerCase().replaceAll(RegExp(r'[^a-z]'), '');
-  switch (key) {
-    case 'paid':
-      return const _PaymentMeta(
-          StatusColors.paymentPaid, Icons.check_circle_outline);
-    case 'partial':
-      return const _PaymentMeta(
-          StatusColors.paymentPartial, Icons.incomplete_circle);
-    case 'unpaid':
-      return _PaymentMeta(scheme.onSurfaceVariant, Icons.payments_outlined);
-    default:
-      return _PaymentMeta(scheme.onSurfaceVariant, Icons.payments_outlined);
-  }
-}
-
-/// Color for the priority accent bar and chip — mirrors `_priorityColor`
-/// in order_list_screen.dart. Only 'high' and 'urgent' are ever elevated
-/// (see `isElevatedPriority` in `_OrderRow`), so this is only ever called
-/// for those two values.
-Color _priorityColor(String priority, ColorScheme scheme) {
-  switch (priority) {
-    case 'urgent':
-      return StatusColors.urgent;
-    case 'high':
-      return StatusColors.priorityHigh(scheme);
-    default:
-      return scheme.onSurfaceVariant;
   }
 }
 

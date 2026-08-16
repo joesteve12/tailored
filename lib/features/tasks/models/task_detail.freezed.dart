@@ -279,8 +279,8 @@ mixin _$TaskDetail {
   String? get notes => throw _privateConstructorUsedError;
   @JsonKey(name: 'due_at')
   DateTime? get dueAt => throw _privateConstructorUsedError;
-  @JsonKey(name: 'reminder_minutes_before')
-  int? get reminderMinutesBefore => throw _privateConstructorUsedError;
+  @JsonKey(name: 'reminder_enabled')
+  bool? get reminderEnabled => throw _privateConstructorUsedError;
   @JsonKey(name: 'remind_at')
   DateTime? get remindAt => throw _privateConstructorUsedError;
   @JsonKey(name: 'completed_at')
@@ -334,7 +334,7 @@ abstract class $TaskDetailCopyWith<$Res> {
       String? title,
       String? notes,
       @JsonKey(name: 'due_at') DateTime? dueAt,
-      @JsonKey(name: 'reminder_minutes_before') int? reminderMinutesBefore,
+      @JsonKey(name: 'reminder_enabled') bool? reminderEnabled,
       @JsonKey(name: 'remind_at') DateTime? remindAt,
       @JsonKey(name: 'completed_at') DateTime? completedAt,
       @JsonKey(name: 'client_id') String? clientId,
@@ -380,7 +380,7 @@ class _$TaskDetailCopyWithImpl<$Res, $Val extends TaskDetail>
     Object? title = freezed,
     Object? notes = freezed,
     Object? dueAt = freezed,
-    Object? reminderMinutesBefore = freezed,
+    Object? reminderEnabled = freezed,
     Object? remindAt = freezed,
     Object? completedAt = freezed,
     Object? clientId = freezed,
@@ -457,10 +457,10 @@ class _$TaskDetailCopyWithImpl<$Res, $Val extends TaskDetail>
           ? _value.dueAt
           : dueAt // ignore: cast_nullable_to_non_nullable
               as DateTime?,
-      reminderMinutesBefore: freezed == reminderMinutesBefore
-          ? _value.reminderMinutesBefore
-          : reminderMinutesBefore // ignore: cast_nullable_to_non_nullable
-              as int?,
+      reminderEnabled: freezed == reminderEnabled
+          ? _value.reminderEnabled
+          : reminderEnabled // ignore: cast_nullable_to_non_nullable
+              as bool?,
       remindAt: freezed == remindAt
           ? _value.remindAt
           : remindAt // ignore: cast_nullable_to_non_nullable
@@ -546,7 +546,7 @@ abstract class _$$TaskDetailImplCopyWith<$Res>
       String? title,
       String? notes,
       @JsonKey(name: 'due_at') DateTime? dueAt,
-      @JsonKey(name: 'reminder_minutes_before') int? reminderMinutesBefore,
+      @JsonKey(name: 'reminder_enabled') bool? reminderEnabled,
       @JsonKey(name: 'remind_at') DateTime? remindAt,
       @JsonKey(name: 'completed_at') DateTime? completedAt,
       @JsonKey(name: 'client_id') String? clientId,
@@ -591,7 +591,7 @@ class __$$TaskDetailImplCopyWithImpl<$Res>
     Object? title = freezed,
     Object? notes = freezed,
     Object? dueAt = freezed,
-    Object? reminderMinutesBefore = freezed,
+    Object? reminderEnabled = freezed,
     Object? remindAt = freezed,
     Object? completedAt = freezed,
     Object? clientId = freezed,
@@ -668,10 +668,10 @@ class __$$TaskDetailImplCopyWithImpl<$Res>
           ? _value.dueAt
           : dueAt // ignore: cast_nullable_to_non_nullable
               as DateTime?,
-      reminderMinutesBefore: freezed == reminderMinutesBefore
-          ? _value.reminderMinutesBefore
-          : reminderMinutesBefore // ignore: cast_nullable_to_non_nullable
-              as int?,
+      reminderEnabled: freezed == reminderEnabled
+          ? _value.reminderEnabled
+          : reminderEnabled // ignore: cast_nullable_to_non_nullable
+              as bool?,
       remindAt: freezed == remindAt
           ? _value.remindAt
           : remindAt // ignore: cast_nullable_to_non_nullable
@@ -737,7 +737,7 @@ class _$TaskDetailImpl extends _TaskDetail {
       this.title,
       this.notes,
       @JsonKey(name: 'due_at') this.dueAt,
-      @JsonKey(name: 'reminder_minutes_before') this.reminderMinutesBefore,
+      @JsonKey(name: 'reminder_enabled') this.reminderEnabled,
       @JsonKey(name: 'remind_at') this.remindAt,
       @JsonKey(name: 'completed_at') this.completedAt,
       @JsonKey(name: 'client_id') this.clientId,
@@ -800,8 +800,8 @@ class _$TaskDetailImpl extends _TaskDetail {
   @JsonKey(name: 'due_at')
   final DateTime? dueAt;
   @override
-  @JsonKey(name: 'reminder_minutes_before')
-  final int? reminderMinutesBefore;
+  @JsonKey(name: 'reminder_enabled')
+  final bool? reminderEnabled;
   @override
   @JsonKey(name: 'remind_at')
   final DateTime? remindAt;
@@ -846,7 +846,7 @@ class _$TaskDetailImpl extends _TaskDetail {
 
   @override
   String toString() {
-    return 'TaskDetail(id: $id, kind: $kind, orderId: $orderId, orderNumber: $orderNumber, orderDueDate: $orderDueDate, orderItemId: $orderItemId, itemIndex: $itemIndex, garmentType: $garmentType, recipientName: $recipientName, quantity: $quantity, unitPrice: $unitPrice, thumbnailUrl: $thumbnailUrl, expectedCompletionDate: $expectedCompletionDate, title: $title, notes: $notes, dueAt: $dueAt, reminderMinutesBefore: $reminderMinutesBefore, remindAt: $remindAt, completedAt: $completedAt, clientId: $clientId, isComplete: $isComplete, delayed: $delayed, dueToday: $dueToday, dueTomorrow: $dueTomorrow, stages: $stages, events: $events, handover: $handover)';
+    return 'TaskDetail(id: $id, kind: $kind, orderId: $orderId, orderNumber: $orderNumber, orderDueDate: $orderDueDate, orderItemId: $orderItemId, itemIndex: $itemIndex, garmentType: $garmentType, recipientName: $recipientName, quantity: $quantity, unitPrice: $unitPrice, thumbnailUrl: $thumbnailUrl, expectedCompletionDate: $expectedCompletionDate, title: $title, notes: $notes, dueAt: $dueAt, reminderEnabled: $reminderEnabled, remindAt: $remindAt, completedAt: $completedAt, clientId: $clientId, isComplete: $isComplete, delayed: $delayed, dueToday: $dueToday, dueTomorrow: $dueTomorrow, stages: $stages, events: $events, handover: $handover)';
   }
 
   @override
@@ -880,8 +880,8 @@ class _$TaskDetailImpl extends _TaskDetail {
             (identical(other.title, title) || other.title == title) &&
             (identical(other.notes, notes) || other.notes == notes) &&
             (identical(other.dueAt, dueAt) || other.dueAt == dueAt) &&
-            (identical(other.reminderMinutesBefore, reminderMinutesBefore) ||
-                other.reminderMinutesBefore == reminderMinutesBefore) &&
+            (identical(other.reminderEnabled, reminderEnabled) ||
+                other.reminderEnabled == reminderEnabled) &&
             (identical(other.remindAt, remindAt) ||
                 other.remindAt == remindAt) &&
             (identical(other.completedAt, completedAt) ||
@@ -921,7 +921,7 @@ class _$TaskDetailImpl extends _TaskDetail {
         title,
         notes,
         dueAt,
-        reminderMinutesBefore,
+        reminderEnabled,
         remindAt,
         completedAt,
         clientId,
@@ -970,8 +970,7 @@ abstract class _TaskDetail extends TaskDetail {
       final String? title,
       final String? notes,
       @JsonKey(name: 'due_at') final DateTime? dueAt,
-      @JsonKey(name: 'reminder_minutes_before')
-      final int? reminderMinutesBefore,
+      @JsonKey(name: 'reminder_enabled') final bool? reminderEnabled,
       @JsonKey(name: 'remind_at') final DateTime? remindAt,
       @JsonKey(name: 'completed_at') final DateTime? completedAt,
       @JsonKey(name: 'client_id') final String? clientId,
@@ -1031,8 +1030,8 @@ abstract class _TaskDetail extends TaskDetail {
   @JsonKey(name: 'due_at')
   DateTime? get dueAt;
   @override
-  @JsonKey(name: 'reminder_minutes_before')
-  int? get reminderMinutesBefore;
+  @JsonKey(name: 'reminder_enabled')
+  bool? get reminderEnabled;
   @override
   @JsonKey(name: 'remind_at')
   DateTime? get remindAt;

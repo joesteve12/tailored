@@ -108,8 +108,7 @@ class OrderDetailNotifier extends FamilyAsyncNotifier<Order, String> {
     double? unitPrice,
     String? notes,
     RecipientRef? recipient,
-    String? measurementSetId,
-    bool clearMeasurementSet = false,
+    List<String>? measurementSetIds,
   }) async {
     await _apply(() => _repo.updateItem(
           arg,
@@ -120,8 +119,7 @@ class OrderDetailNotifier extends FamilyAsyncNotifier<Order, String> {
           unitPrice: unitPrice,
           notes: notes,
           recipient: recipient,
-          measurementSetId: measurementSetId,
-          clearMeasurementSet: clearMeasurementSet,
+          measurementSetIds: measurementSetIds,
         ));
     // NOTE: item edits are purely descriptive now — production status is
     // derived from the item's Task and cannot move through this method, so

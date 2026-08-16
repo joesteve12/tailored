@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/theme/app_tokens.dart';
 import '../../../core/widgets/async_error_view.dart';
 import '../../../core/widgets/feedback.dart';
 import '../data/measurement_repository.dart';
@@ -332,9 +333,9 @@ class _MeasurementTemplateFormScreenState
             TextFormField(
               controller: _garmentTypeController,
               decoration: const InputDecoration(
-                labelText: 'Garment type (optional)',
+                labelText: 'Outfit type (optional)',
                 hintText: 'e.g. agbada',
-                helperText: 'Matches the garment on an order item',
+                helperText: 'Matches the outfit on an order item',
                 border: OutlineInputBorder(),
               ),
             ),
@@ -365,7 +366,7 @@ class _MeasurementTemplateFormScreenState
               'Drag to set the order the tailor measures in. Required fields '
               'must be filled before a measurement can be saved.',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(context).colorScheme.outline,
+                    color: context.appTokens.mutedForeground,
                   ),
             ),
             const SizedBox(height: 8),
@@ -374,7 +375,7 @@ class _MeasurementTemplateFormScreenState
                 padding: const EdgeInsets.symmetric(vertical: 24),
                 child: Center(
                   child: Text(
-                    'No fields yet — add the measurements this garment needs.',
+                    'No fields yet — add the measurements this outfit needs.',
                     style: Theme.of(context).textTheme.bodyMedium,
                     textAlign: TextAlign.center,
                   ),
@@ -463,6 +464,7 @@ class _FieldRowTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final mutedForeground = context.appTokens.mutedForeground;
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
@@ -470,7 +472,7 @@ class _FieldRowTile extends StatelessWidget {
         children: [
           ReorderableDragStartListener(
             index: index,
-            child: Icon(Icons.drag_handle, color: scheme.outline),
+            child: Icon(Icons.drag_handle, color: mutedForeground),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -490,7 +492,7 @@ class _FieldRowTile extends StatelessWidget {
                       ? 'Archived — not shown when measuring'
                       : (row.unit == 'none' ? 'No unit' : row.unit),
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: row.isArchived ? scheme.error : scheme.outline,
+                        color: row.isArchived ? scheme.error : mutedForeground,
                       ),
                 ),
               ],
@@ -509,7 +511,7 @@ class _FieldRowTile extends StatelessWidget {
           ),
           IconButton(
             tooltip: 'Remove',
-            icon: Icon(Icons.close, color: scheme.outline),
+            icon: Icon(Icons.close, color: mutedForeground),
             onPressed: onRemove,
           ),
         ],

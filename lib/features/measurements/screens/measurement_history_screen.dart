@@ -3,88 +3,53 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/models/recipient_ref.dart';
+import '../../../core/theme/app_tokens.dart';
 import '../../../core/widgets/async_error_view.dart';
+import '../../../core/widgets/skeleton.dart';
 import '../models/measurement_set.dart';
-import '../state/measurement_dictionary_providers.dart';
 import '../state/measurement_list_notifier.dart';
-import '../widgets/measurement_list_section.dart' show kCustomTemplateFilter;
 
-/// Measurement-set history for a client or guest, newest first. If
-/// [templateFilter] is provided, the list is restricted to sets under that
-/// template — a template id, or the [kCustomTemplateFilter] sentinel to show
-/// only sets captured without any template. The FAB starts a new capture for
-/// the same recipient (unfiltered — a new capture picks its own template).
+/// The full measurement list for a client or guest, newest first.
+///
+/// This is the single list surface for a recipient's measurements. It used to
+/// support a `templateFilter` so the (now removed) grouped preview could drill
+/// into one template's records — measurements are no longer grouped by
+/// template, so the list is simply every set the recipient has, each identified
+/// by its label (which defaults to the template name at capture time). The FAB
+/// starts a new capture for the same recipient.
 class MeasurementHistoryScreen extends ConsumerWidget {
-  const MeasurementHistoryScreen({
-    super.key,
-    required this.recipient,
-    this.templateFilter,
-  });
+  const MeasurementHistoryScreen({super.key, required this.recipient});
 
   final RecipientRef recipient;
-  final String? templateFilter;
-
-  bool _matchesFilter(MeasurementSet s) {
-    if (templateFilter == null) return true;
-    if (templateFilter == kCustomTemplateFilter) return s.templateId == null;
-    return s.templateId == templateFilter;
-  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final setsAsync = ref.watch(measurementListProvider(recipient));
-    // Templates only fetched when we actually need a name for the title —
-    // when a filter is set. On the unfiltered view the provider still watches
-    // if it's already cached, but no extra fetch is triggered.
-    final templatesAsync = templateFilter == null
-        ? null
-        : ref.watch(measurementTemplatesProvider);
-
-    // Title resolves the template name if we can; falls back cleanly when we
-    // can't (unknown/archived template, or "Custom" sentinel).
-    String title = 'Measurement history';
-    if (templateFilter == kCustomTemplateFilter) {
-      title = 'Custom measurements';
-    } else if (templateFilter != null && templatesAsync != null) {
-      final name = templatesAsync.whenOrNull(
-        data: (templates) {
-          for (final t in templates) {
-            if (t.id == templateFilter) return t.name;
-          }
-          return null;
-        },
-      );
-      if (name != null) title = '$name measurements';
-    }
 
     return Scaffold(
-      appBar: AppBar(title: Text(title)),
+      appBar: AppBar(title: const Text('Measurements')),
       body: setsAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
+        loading: () => SkeletonList(
+          scrollable: true,
+          itemBuilder: (_, __) => const SkeletonTile(hasLeading: false),
+        ),
         error: (err, _) => AsyncErrorView(
           error: err,
           onRetry: () =>
               ref.read(measurementListProvider(recipient).notifier).refresh(),
         ),
-        data: (allSets) {
-          final sets = allSets.where(_matchesFilter).toList();
+        data: (sets) {
           if (sets.isEmpty) {
-            // Scroll-wrap the empty state so pull-to-refresh still fires.
             return RefreshIndicator(
-              onRefresh: () =>
-                  ref.read(measurementListProvider(recipient).notifier).refresh(),
+              onRefresh: () => ref
+                  .read(measurementListProvider(recipient).notifier)
+                  .refresh(),
               child: ListView(
                 physics: const AlwaysScrollableScrollPhysics(),
                 children: [
                   SizedBox(
                     height: MediaQuery.of(context).size.height * 0.7,
-                    child: Center(
-                      child: Text(
-                        templateFilter == null
-                            ? 'No measurements recorded yet'
-                            : 'No records under this template yet',
-                      ),
-                    ),
+                    child: _EmptyState(recipient: recipient),
                   ),
                 ],
               ),
@@ -95,9 +60,10 @@ class MeasurementHistoryScreen extends ConsumerWidget {
                 ref.read(measurementListProvider(recipient).notifier).refresh(),
             child: ListView.separated(
               physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
               itemCount: sets.length,
-              separatorBuilder: (_, __) => const Divider(height: 1),
-              itemBuilder: (context, index) => _SetTile(set: sets[index]),
+              separatorBuilder: (_, __) => const SizedBox(height: 12),
+              itemBuilder: (context, index) => _SetCard(set: sets[index]),
             ),
           );
         },
@@ -112,65 +78,125 @@ class MeasurementHistoryScreen extends ConsumerWidget {
   }
 }
 
-class _SetTile extends StatelessWidget {
-  const _SetTile({required this.set});
+class _EmptyState extends StatelessWidget {
+  const _EmptyState({required this.recipient});
 
-  final MeasurementSet set;
+  final RecipientRef recipient;
 
   @override
   Widget build(BuildContext context) {
-    final date = set.takenAt ?? set.createdAt;
-    final dateLabel = '${date.day.toString().padLeft(2, '0')}/'
-        '${date.month.toString().padLeft(2, '0')}/${date.year}';
-    final preview = set.values.take(3).map((v) => v.label).join(', ');
-    final notes = set.notes?.trim() ?? '';
-
-    return ListTile(
-      isThreeLine: notes.isNotEmpty,
-      title: Text(set.label?.isNotEmpty == true ? set.label! : dateLabel),
-      subtitle: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            [
-              if (set.label?.isNotEmpty == true) dateLabel,
-              if (preview.isNotEmpty) preview,
-              '${set.values.length} value${set.values.length == 1 ? '' : 's'}',
-            ].join('  ·  '),
-          ),
-          // Notes carry the fit preference and anything else that isn't a
-          // number, and they print on the work order — so they belong on the
-          // row, not two taps away.
-          if (notes.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(top: 2),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(
-                    Icons.sticky_note_2_outlined,
-                    size: 14,
-                    color: Theme.of(context).colorScheme.outline,
-                  ),
-                  const SizedBox(width: 4),
-                  Expanded(
-                    child: Text(
-                      notes,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: Theme.of(context).colorScheme.outline,
-                            fontStyle: FontStyle.italic,
-                          ),
-                    ),
-                  ),
-                ],
+    final scheme = Theme.of(context).colorScheme;
+    final tokens = context.appTokens;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 72,
+              height: 72,
+              decoration: BoxDecoration(
+                color: scheme.primaryContainer,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.straighten,
+                size: 34,
+                color: scheme.onPrimaryContainer,
               ),
             ),
-        ],
+            const SizedBox(height: 20),
+            Text(
+              'No measurements yet',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Record a set to start building this history. '
+              'Pick a template to prefill the fields, or add your own.',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: tokens.mutedForeground,
+                  ),
+            ),
+          ],
+        ),
       ),
-      trailing: const Icon(Icons.chevron_right),
-      onTap: () => context.push('/measurements/sets/${set.id}'),
+    );
+  }
+}
+
+/// One measurement set as a tappable card: label + date, a preview of the
+/// captured values as chips, and the notes line (which carries fit preferences
+/// and prints on the work order, so it earns a place on the card).
+class _SetCard extends StatelessWidget {
+  const _SetCard({required this.set});
+
+  final MeasurementSet set;
+
+  static const List<String> _months = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', //
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+  ];
+
+  static String _formatDate(DateTime d) =>
+      '${d.day} ${_months[d.month - 1]} ${d.year}';
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final tokens = context.appTokens;
+    final date = set.takenAt ?? set.createdAt;
+    final dateLabel = _formatDate(date);
+    final title = set.label?.isNotEmpty == true ? set.label! : dateLabel;
+    final count = set.values.length;
+    final countLabel =
+        count == 0 ? 'No measurements' : '$count measurement${count == 1 ? '' : 's'}';
+
+    return Container(
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(tokens.radiusLg),
+        border: Border.all(color: scheme.outlineVariant.withOpacity(0.4)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () => context.push('/measurements/sets/${set.id}'),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Row one: the set's name (label, or the date as a fallback).
+                    Text(
+                      title,
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: tokens.fontWeightMedium,
+                          ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 3),
+                    // Row two: when it was taken and how many values it holds.
+                    Text(
+                      '$dateLabel  ·  $countLabel',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: tokens.mutedForeground,
+                          ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Icon(Icons.chevron_right, color: tokens.mutedForeground),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/theme/app_tokens.dart';
 import '../../../core/utils/money.dart';
 import '../../../core/utils/payment_labels.dart';
 import '../../../core/widgets/feedback.dart';
@@ -91,8 +92,6 @@ class _LogTipSheetState extends ConsumerState<LogTipSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-
     return Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
       child: SingleChildScrollView(
@@ -108,7 +107,7 @@ class _LogTipSheetState extends ConsumerState<LogTipSheet> {
               Text(
                 "A tip is recorded separately and doesn't change what's owed.",
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: scheme.outline,
+                      color: context.appTokens.mutedForeground,
                     ),
               ),
               const SizedBox(height: 16),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/theme/app_tokens.dart';
 import '../../../core/utils/share_document.dart';
 import '../../../core/widgets/feedback.dart';
 import '../../orders/models/order.dart';
@@ -86,7 +87,7 @@ class _OrderDocumentActionsState extends ConsumerState<OrderDocumentActions> {
             Text(
               'Receipts are issued per payment — see Activity.',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(context).colorScheme.outline,
+                    color: context.appTokens.mutedForeground,
                   ),
             ),
             const SizedBox(height: 8),

@@ -48,7 +48,7 @@ class TaskSummary with _$TaskSummary {
     // General (to-do) fields.
     String? title,
     @JsonKey(name: 'due_at') DateTime? dueAt,
-    @JsonKey(name: 'reminder_minutes_before') int? reminderMinutesBefore,
+    @JsonKey(name: 'reminder_enabled') bool? reminderEnabled,
     @JsonKey(name: 'completed_at') DateTime? completedAt,
     // Derived flags (both kinds). Buckets come from the server — computed
     // against the `today` + tz offset the client sent — so the tabs and

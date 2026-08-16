@@ -1,0 +1,50 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "flutter-web-preview",
+      "runtimeExecutable": "flutter",
+      "runtimeArgs": [
+        "run",
+        "-d",
+        "web-server",
+        "--web-port",
+        "8765",
+        "-t",
+        "lib/_dev_preview_client_detail.dart",
+        "--dart-define=API_BASE_URL=http://127.0.0.1:1/api/v1"
+      ],
+      "port": 8765
+    },
+    {
+      "name": "flutter-web-preview-outfits",
+      "runtimeExecutable": "flutter",
+      "runtimeArgs": [
+        "run",
+        "-d",
+        "web-server",
+        "--web-port",
+        "8766",
+        "-t",
+        "lib/_dev_preview_order_outfits.dart",
+        "--dart-define=API_BASE_URL=http://127.0.0.1:1/api/v1"
+      ],
+      "port": 8766
+    },
+    {
+      "name": "flutter-web-preview-payment",
+      "runtimeExecutable": "flutter",
+      "runtimeArgs": [
+        "run",
+        "-d",
+        "web-server",
+        "--web-port",
+        "8767",
+        "-t",
+        "lib/_dev_preview_payment_section.dart",
+        "--dart-define=API_BASE_URL=http://127.0.0.1:1/api/v1"
+      ],
+      "port": 8767
+    }
+  ]
+}

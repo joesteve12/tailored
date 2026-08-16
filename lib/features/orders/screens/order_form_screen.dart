@@ -38,11 +38,13 @@ class OrderFormScreen extends ConsumerStatefulWidget {
 
 class _OrderFormScreenState extends ConsumerState<OrderFormScreen> {
   final _notesController = TextEditingController();
-  final _discountController = TextEditingController(text: '0');
+  final _discountController = TextEditingController();
 
   DateTime _dueDate = DateTime.now().add(const Duration(days: 7));
   String _priority = 'normal';
-  String _discountType = 'none';
+  // The discount mode the value field is read against. An empty value field
+  // means "no discount" — there's no separate 'none' toggle any more.
+  String _discountMode = 'fixed';
   final List<OrderItemInput> _items = [];
   final List<StagedUpload> _media = [];
 
@@ -97,10 +99,9 @@ class _OrderFormScreenState extends ConsumerState<OrderFormScreen> {
       _items.fold(0.0, (sum, it) => sum + it.unitPrice * it.quantity);
 
   double get _discountAmount {
-    if (_discountType == 'none') return 0;
     final value = double.tryParse(_discountController.text.trim()) ?? 0;
-    if (value <= 0) return 0;
-    if (_discountType == 'percentage') {
+    if (value <= 0) return 0; // empty / non-positive field ⇒ no discount
+    if (_discountMode == 'percentage') {
       return _subtotal * (value.clamp(0, 100) / 100);
     }
     // Fixed amount can't take the total below zero.
@@ -154,16 +155,12 @@ class _OrderFormScreenState extends ConsumerState<OrderFormScreen> {
       return;
     }
 
-    final discountValue = _discountType == 'none'
-        ? 0.0
-        : (double.tryParse(_discountController.text.trim()) ?? 0.0);
-    if (_discountType != 'none' && discountValue <= 0) {
-      if (mounted) {
-        showErrorMessage(
-            context, 'Enter a discount value, or pick "No discount"');
-      }
-      return;
-    }
+    // Empty (or non-positive) discount field means no discount — there's no
+    // separate 'none' toggle any more.
+    final discountRaw = double.tryParse(_discountController.text.trim()) ?? 0.0;
+    final hasDiscount = discountRaw > 0;
+    final discountType = hasDiscount ? _discountMode : 'none';
+    final discountValue = hasDiscount ? discountRaw : 0.0;
 
     setState(() {
       _isSubmitting = true;
@@ -175,7 +172,7 @@ class _OrderFormScreenState extends ConsumerState<OrderFormScreen> {
             dueDate: _dueDate,
             notes: _notesController.text.trim(),
             priority: _priority,
-            discountType: _discountType,
+            discountType: discountType,
             discountValue: discountValue,
             items: _items,
             media: _media,
@@ -255,12 +252,9 @@ class _OrderFormScreenState extends ConsumerState<OrderFormScreen> {
                   const SectionLabel('Discount'),
                   const SizedBox(height: 10),
                   DiscountField(
-                    type: _discountType,
+                    mode: _discountMode,
                     valueController: _discountController,
-                    onTypeChanged: (v) => setState(() {
-                      _discountType = v;
-                      if (v == 'none') _discountController.text = '0';
-                    }),
+                    onModeChanged: (m) => setState(() => _discountMode = m),
                   ),
 
                   const SizedBox(height: 26),
@@ -427,7 +421,7 @@ class _EmptyOutfits extends StatelessWidget {
           ),
           const SizedBox(height: 2),
           Text(
-            'Every order needs at least one garment.',
+            'Every order needs at least one outfit.',
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
                   color: scheme.onSurfaceVariant,
                 ),

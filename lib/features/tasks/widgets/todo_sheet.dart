@@ -43,7 +43,7 @@ class _TodoSheetState extends ConsumerState<_TodoSheet> {
   late final TextEditingController _notes =
       TextEditingController(text: widget.existing?.notes ?? '');
   late DateTime? _dueLocal = widget.existing?.dueAt?.toLocal();
-  late int? _reminderMinutes = widget.existing?.reminderMinutesBefore;
+  late bool _reminderEnabled = widget.existing?.reminderEnabled ?? false;
   // Link state: id + display label. Prefilled from the existing task's
   // linked order number / client name (the detail response carries both).
   late String? _orderId = widget.existing?.orderId;
@@ -98,7 +98,7 @@ class _TodoSheetState extends ConsumerState<_TodoSheet> {
       // Permission on first USE of a reminder — the contract from the
       // Reminders spec. A denial isn't fatal: the reminder still exists
       // server-side and the in-app surfaces show it; just say so.
-      if (_reminderMinutes != null) {
+      if (_reminderEnabled) {
         final granted =
             await ref.read(reminderServiceProvider).ensurePermissions();
         if (!granted && mounted) {
@@ -119,7 +119,7 @@ class _TodoSheetState extends ConsumerState<_TodoSheet> {
           GeneralTaskInput(
             title: title,
             dueAt: _dueLocal!, // toUtc happens in toJson — one boundary
-            reminderMinutesBefore: _reminderMinutes,
+            reminderEnabled: _reminderEnabled,
             notes: _notes.text.trim().isEmpty ? null : _notes.text.trim(),
             orderId: _orderId,
             clientId: _clientId,
@@ -158,12 +158,9 @@ class _TodoSheetState extends ConsumerState<_TodoSheet> {
       dueAt: dueChanged ? _dueLocal : null,
       notes: (notes.isNotEmpty && notes != existingNotes) ? notes : null,
       clearNotes: notes.isEmpty && existingNotes.isNotEmpty,
-      reminderMinutesBefore:
-          (_reminderMinutes != null && _reminderMinutes != existing.reminderMinutesBefore)
-              ? _reminderMinutes
-              : null,
-      clearReminder:
-          _reminderMinutes == null && existing.reminderMinutesBefore != null,
+      reminderEnabled: _reminderEnabled != (existing.reminderEnabled ?? false)
+          ? _reminderEnabled
+          : null,
       orderId: (_orderId != null && _orderId != existing.orderId)
           ? _orderId
           : null,
@@ -177,7 +174,6 @@ class _TodoSheetState extends ConsumerState<_TodoSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     final dueLocal = _dueLocal;
 
     return Padding(
@@ -215,23 +211,11 @@ class _TodoSheetState extends ConsumerState<_TodoSheet> {
                 onTap: _pickDue,
               ),
               const SizedBox(height: 4),
-              Text('Reminder',
-                  style: Theme.of(context)
-                      .textTheme
-                      .labelMedium
-                      ?.copyWith(color: scheme.onSurfaceVariant)),
-              const SizedBox(height: 6),
-              Wrap(
-                spacing: 8,
-                children: [
-                  for (final preset in kReminderPresets)
-                    ChoiceChip(
-                      label: Text(preset.label),
-                      selected: _reminderMinutes == preset.minutes,
-                      onSelected: (_) =>
-                          setState(() => _reminderMinutes = preset.minutes),
-                    ),
-                ],
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Reminder'),
+                value: _reminderEnabled,
+                onChanged: (v) => setState(() => _reminderEnabled = v),
               ),
               const SizedBox(height: 12),
               _LinkRow(

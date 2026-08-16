@@ -8,10 +8,11 @@ import '../../measurements/state/measurement_dictionary_providers.dart';
 import '../../measurements/state/measurement_list_notifier.dart';
 
 /// Lets an order item record which of the recipient's measurement sets it
-/// was "cut from" (the snapshot link the backend stores as
-/// `measurement_set_id`). Shows the recipient's sets newest-first and a
-/// "None" option; reports the chosen set id (or null to clear) via
-/// [onChanged].
+/// was "cut from" (the snapshot link the backend stores in
+/// `measurement_set_ids`). A garment can be several pieces — a top and a
+/// skirt, say — each cut from its own set, so this picks *any number* of
+/// sets. Shows the recipient's sets newest-first with a checkbox each;
+/// reports the chosen ids via [onChanged].
 ///
 /// The recipient drives which sets are offered — measurement sets belong to
 /// a client or a guest, so changing the item's recipient changes this list.
@@ -23,13 +24,13 @@ class MeasurementSnapshotField extends ConsumerWidget {
   const MeasurementSnapshotField({
     super.key,
     required this.recipient,
-    required this.selectedSetId,
+    required this.selectedSetIds,
     required this.onChanged,
   });
 
   final RecipientRef recipient;
-  final String? selectedSetId;
-  final ValueChanged<String?> onChanged;
+  final List<String> selectedSetIds;
+  final ValueChanged<List<String>> onChanged;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -51,13 +52,13 @@ class MeasurementSnapshotField extends ConsumerWidget {
       loading: () => const ListTile(
         contentPadding: EdgeInsets.zero,
         leading: Icon(Icons.straighten_outlined),
-        title: Text('Measurement snapshot'),
+        title: Text('Measurement snapshots'),
         subtitle: Text('Loading measurement sets…'),
       ),
       error: (_, __) => ListTile(
         contentPadding: EdgeInsets.zero,
         leading: const Icon(Icons.straighten_outlined),
-        title: const Text('Measurement snapshot'),
+        title: const Text('Measurement snapshots'),
         subtitle: const Text("Couldn't load measurement sets"),
         trailing: TextButton(
           onPressed: () =>
@@ -66,41 +67,18 @@ class MeasurementSnapshotField extends ConsumerWidget {
         ),
       ),
       data: (sets) {
-        final selected = _findSelected(sets);
-        final notes = selected?.notes?.trim() ?? '';
+        final chosen = _chosenSets(sets);
         return ListTile(
           contentPadding: EdgeInsets.zero,
-          isThreeLine: notes.isNotEmpty,
           leading: const Icon(Icons.straighten_outlined),
-          title: const Text('Measurement snapshot'),
-          subtitle: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                selected != null
-                    ? 'Cut from: ${_primaryLabel(selected, nameById)}'
-                    : sets.isEmpty
-                        ? 'No measurement sets for this recipient yet'
-                        : 'None selected',
-              ),
-              // The chosen set's notes — fit preference and anything else the
-              // tailor has to know that isn't a number. These print on the work
-              // order, so seeing them while picking the snapshot is the check
-              // that the right one was picked.
-              if (notes.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(top: 2),
-                  child: Text(
-                    notes,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Theme.of(context).colorScheme.outline,
-                          fontStyle: FontStyle.italic,
-                        ),
-                  ),
-                ),
-            ],
+          title: const Text('Measurement snapshots'),
+          subtitle: Text(
+            chosen.isNotEmpty
+                ? 'Cut from: '
+                    '${chosen.map((s) => _primaryLabel(s, nameById)).join(', ')}'
+                : sets.isEmpty
+                    ? 'No measurement sets for this recipient yet'
+                    : 'None selected',
           ),
           trailing: const Icon(Icons.chevron_right),
           onTap: sets.isEmpty ? null : () => _pick(context, sets, nameById),
@@ -109,12 +87,12 @@ class MeasurementSnapshotField extends ConsumerWidget {
     );
   }
 
-  MeasurementSet? _findSelected(List<MeasurementSet> sets) {
-    if (selectedSetId == null) return null;
-    for (final s in sets) {
-      if (s.id == selectedSetId) return s;
-    }
-    return null;
+  /// The selected sets, in the list's newest-first order (so the field's
+  /// summary reads the same way the picker does), filtered to ids that still
+  /// exist for this recipient.
+  List<MeasurementSet> _chosenSets(List<MeasurementSet> sets) {
+    final wanted = selectedSetIds.toSet();
+    return [for (final s in sets) if (wanted.contains(s.id)) s];
   }
 
   Future<void> _pick(
@@ -122,58 +100,81 @@ class MeasurementSnapshotField extends ConsumerWidget {
     List<MeasurementSet> sets,
     Map<String, String> nameById,
   ) async {
-    final result = await showModalBottomSheet<_SnapshotChoice>(
+    final result = await showModalBottomSheet<List<String>>(
       context: context,
       isScrollControlled: true,
-      builder: (context) => SafeArea(
-        child: ListView(
-          shrinkWrap: true,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-              child: Text('Cut from which measurements?',
-                  style: Theme.of(context).textTheme.titleMedium),
-            ),
-            RadioListTile<String?>(
-              value: null,
-              groupValue: selectedSetId,
-              title: const Text('None'),
-              onChanged: (_) =>
-                  Navigator.pop(context, const _SnapshotChoice(null)),
-            ),
-            for (final s in sets)
-              RadioListTile<String?>(
-                value: s.id,
-                groupValue: selectedSetId,
-                isThreeLine: (s.notes?.trim().isNotEmpty ?? false),
-                title: Text(_primaryLabel(s, nameById)),
-                subtitle: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(_subtitle(s, nameById)),
-                    if (s.notes?.trim().isNotEmpty ?? false)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 2),
-                        child: Text(
-                          s.notes!.trim(),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context)
-                              .textTheme
-                              .bodySmall
-                              ?.copyWith(fontStyle: FontStyle.italic),
-                        ),
+      builder: (context) {
+        // Local, mutable selection committed only on "Done" — so dismissing
+        // the sheet (swipe / tap-out) leaves the item's snapshots unchanged.
+        final working = selectedSetIds.toSet();
+        return StatefulBuilder(
+          builder: (context, setSheetState) => SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text('Cut from which measurements?',
+                            style: Theme.of(context).textTheme.titleMedium),
                       ),
-                  ],
+                      TextButton(
+                        onPressed: () =>
+                            Navigator.pop(context, working.toList()),
+                        child: const Text('Done'),
+                      ),
+                    ],
+                  ),
                 ),
-                onChanged: (_) =>
-                    Navigator.pop(context, _SnapshotChoice(s.id)),
-              ),
-          ],
-        ),
-      ),
+                Flexible(
+                  child: ListView(
+                    shrinkWrap: true,
+                    children: [
+                      for (final s in sets)
+                        CheckboxListTile(
+                          value: working.contains(s.id),
+                          controlAffinity: ListTileControlAffinity.leading,
+                          isThreeLine: (s.notes?.trim().isNotEmpty ?? false),
+                          title: Text(_primaryLabel(s, nameById)),
+                          subtitle: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(_subtitle(s, nameById)),
+                              if (s.notes?.trim().isNotEmpty ?? false)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 2),
+                                  child: Text(
+                                    s.notes!.trim(),
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .bodySmall
+                                        ?.copyWith(fontStyle: FontStyle.italic),
+                                  ),
+                                ),
+                            ],
+                          ),
+                          onChanged: (checked) => setSheetState(() {
+                            if (checked ?? false) {
+                              working.add(s.id);
+                            } else {
+                              working.remove(s.id);
+                            }
+                          }),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
-    if (result != null) onChanged(result.setId);
+    if (result != null) onChanged(result);
   }
 
   /// What goes on the top line of a picker row (and in the trailing "Cut from"
@@ -215,11 +216,4 @@ class MeasurementSnapshotField extends ConsumerWidget {
     final d = when.day.toString().padLeft(2, '0');
     return 'Set from $y-$m-$d';
   }
-}
-
-/// Wraps the picked id so "picked None" (null) is distinguishable from
-/// "dismissed the sheet" (the showModalBottomSheet future resolving null).
-class _SnapshotChoice {
-  const _SnapshotChoice(this.setId);
-  final String? setId;
 }

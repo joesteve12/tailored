@@ -210,9 +210,9 @@ class OrderRepository {
   ///   (the active one set, the other explicitly null) so the backend's
   ///   "exactly one recipient id" constraint stays satisfied — sending only
   ///   the new id would leave the old one in place and fail validation.
-  /// - To attach a snapshot, pass [measurementSetId]. To *remove* one, pass
-  ///   `clearMeasurementSet: true` (sends an explicit null, which
-  ///   exclude_unset can't express via a plain omitted field).
+  /// - To change the snapshots, pass [measurementSetIds] — the list replaces
+  ///   the item's snapshots wholesale. Pass an empty list to clear them all;
+  ///   pass null (the default) to leave them untouched.
   ///
   /// Fabric images and style references are NOT edited here — they have
   /// dedicated upload/delete endpoints (see below).
@@ -225,8 +225,7 @@ class OrderRepository {
     double? unitPrice,
     String? notes,
     RecipientRef? recipient,
-    String? measurementSetId,
-    bool clearMeasurementSet = false,
+    List<String>? measurementSetIds,
   }) async {
     final data = <String, dynamic>{
       if (garmentType != null) 'garment_type': garmentType,
@@ -239,8 +238,9 @@ class OrderRepository {
         'recipient_client_id': recipient.isClient ? recipient.id : null,
         'guest_recipient_id': recipient.isGuest ? recipient.id : null,
       },
-      if (measurementSetId != null) 'measurement_set_id': measurementSetId,
-      if (clearMeasurementSet) 'measurement_set_id': null,
+      // A non-null list (including empty) is sent as-is → replace/clear.
+      if (measurementSetIds != null)
+        'measurement_set_ids': measurementSetIds,
     };
     final response =
         await _dio.put('/orders/$orderId/items/$itemId', data: data);

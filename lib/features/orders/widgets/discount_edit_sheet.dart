@@ -40,47 +40,58 @@ class DiscountEditSheet extends StatefulWidget {
 }
 
 class _DiscountEditSheetState extends State<DiscountEditSheet> {
-  late String _type;
+  // The mode the value is read against. An empty value field means "no
+  // discount"; there's no separate 'none' option.
+  late String _mode;
   late final TextEditingController _valueController;
   late bool _includesAddons;
 
   bool get _isEdit => widget.order.hasDiscount;
 
+  /// True once a positive value is present — drives the addon-scope prompt and
+  /// the save button's effect (empty ⇒ the discount is cleared).
+  bool get _hasValue =>
+      (double.tryParse(_valueController.text.trim()) ?? 0) > 0;
+
   @override
   void initState() {
     super.initState();
-    _type = widget.order.discountType;
+    // A cleared discount reports type 'none'; default the mode to fixed so the
+    // toggle has a sane starting side.
+    _mode = widget.order.discountType == 'percentage' ? 'percentage' : 'fixed';
     _valueController = TextEditingController(
       text: widget.order.discountValue > 0
           ? trimTrailingZeros(widget.order.discountValue)
           : '',
     );
     _includesAddons = widget.order.discountIncludesAddons;
+    // The addon-scope prompt appears/disappears as a value is typed or cleared.
+    _valueController.addListener(_onValueChanged);
+  }
+
+  void _onValueChanged() {
+    if (mounted) setState(() {});
   }
 
   @override
   void dispose() {
+    _valueController.removeListener(_onValueChanged);
     _valueController.dispose();
     super.dispose();
   }
 
   void _save() {
-    final value = _type == 'none'
-        ? 0.0
-        : (double.tryParse(_valueController.text.trim()) ?? 0.0);
-    if (_type != 'none' && value <= 0) {
-      showErrorMessage(context, 'Enter a discount value, or pick "None"');
-      return;
-    }
-    if (_type == 'percentage' && value > 100) {
+    final value = double.tryParse(_valueController.text.trim()) ?? 0.0;
+    final hasDiscount = value > 0;
+    if (hasDiscount && _mode == 'percentage' && value > 100) {
       showErrorMessage(context, "A percentage can't be more than 100");
       return;
     }
     Navigator.pop(
       context,
       DiscountEdit(
-        discountType: _type,
-        discountValue: value,
+        discountType: hasDiscount ? _mode : 'none',
+        discountValue: hasDiscount ? value : 0.0,
         discountIncludesAddons: widget.order.hasAddons ? _includesAddons : null,
       ),
     );
@@ -132,17 +143,14 @@ class _DiscountEditSheetState extends State<DiscountEditSheet> {
             const SectionLabel('Discount'),
             const SizedBox(height: 10),
             DiscountField(
-              type: _type,
+              mode: _mode,
               valueController: _valueController,
-              onTypeChanged: (v) => setState(() {
-                _type = v;
-                if (v == 'none') _valueController.text = '';
-              }),
+              onModeChanged: (m) => setState(() => _mode = m),
             ),
-            // Asked only when there are addons for the answer to apply to. On a
-            // plain order the choice is meaningless and the default (include)
-            // is sent silently.
-            if (_type != 'none' && order.hasAddons) ...[
+            // Asked only when there's a value AND addons for the answer to apply
+            // to. On a plain order the choice is meaningless and the default
+            // (include) is sent silently.
+            if (_hasValue && order.hasAddons) ...[
               const SizedBox(height: 22),
               const SectionLabel('Apply to extra charges?'),
               const SizedBox(height: 4),
@@ -168,7 +176,7 @@ class _DiscountEditSheetState extends State<DiscountEditSheet> {
                 groupValue: _includesAddons,
                 onChanged: (v) => setState(() => _includesAddons = v!),
                 title: Text('No — only the ${formatNaira(order.itemsSubtotal)} '
-                    'in garments'),
+                    'in outfits'),
               ),
             ],
             const SizedBox(height: 22),

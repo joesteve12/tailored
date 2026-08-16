@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/theme/app_tokens.dart';
 import '../../../core/utils/money.dart';
 import '../../../core/utils/payment_labels.dart';
 import '../../../core/widgets/feedback.dart';
@@ -203,7 +204,7 @@ class _RecordPaymentSheetState extends ConsumerState<RecordPaymentSheet> {
               Text(
                 'Outstanding balance: ${formatNaira(widget.maxAmount)}',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.outline,
+                      color: context.appTokens.mutedForeground,
                     ),
               ),
               const SizedBox(height: 16),

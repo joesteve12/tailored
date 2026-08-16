@@ -43,9 +43,24 @@ import '../../../core/widgets/image_viewer.dart';
 /// screen. A delivered/cancelled order is locked — edit affordances are
 /// hidden rather than left to fail server-side.
 class OrderDetailScreen extends ConsumerStatefulWidget {
-  const OrderDetailScreen({super.key, required this.orderId});
+  const OrderDetailScreen({
+    super.key,
+    required this.orderId,
+    this.initialTab = 0,
+    this.highlightItemId,
+  });
 
   final String orderId;
+
+  /// Which section tab opens first: 0 Overview, 1 Outfits, 2 Activity,
+  /// 3 Media. Deep links (e.g. a production task's header tapping through
+  /// to "see the outfit") pass 1 so the garment list is what you land on.
+  final int initialTab;
+
+  /// When set (paired with the Outfits tab), that item's card is scrolled
+  /// into view and briefly pulsed once the list is on screen — so a
+  /// tap-through from a task lands on the exact garment, not just the list.
+  final String? highlightItemId;
 
   @override
   ConsumerState<OrderDetailScreen> createState() => _OrderDetailScreenState();
@@ -60,8 +75,11 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen>
   // Priority, due date, the client link, and the status chip (tap it to
   // change status) live in a fixed block above the tabs so they stay
   // visible no matter which tab is open.
-  late final TabController _tabController =
-      TabController(length: 4, vsync: this);
+  late final TabController _tabController = TabController(
+    length: 4,
+    vsync: this,
+    initialIndex: widget.initialTab.clamp(0, 3),
+  );
 
   OrderDetailNotifier get _notifier =>
       ref.read(orderDetailProvider(widget.orderId).notifier);
@@ -110,8 +128,8 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen>
           children: [
             Text(
               unfinished.length == 1
-                  ? 'One garment is not finished yet:'
-                  : '${unfinished.length} garments are not finished yet:',
+                  ? 'One outfit is not finished yet:'
+                  : '${unfinished.length} outfits are not finished yet:',
             ),
             const SizedBox(height: 8),
             for (final i in unfinished)
@@ -388,6 +406,7 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen>
               _OutfitsTab(
                 order: order,
                 busy: _busy,
+                highlightItemId: widget.highlightItemId,
                 onRefresh: () => _notifier.refresh(),
                 onAddItem: () => _addItem(order),
                 onEditItem: (item) => _editItem(order, item),
@@ -480,7 +499,8 @@ class _PillTabBar extends StatelessWidget {
         controller: controller,
         indicatorSize: TabBarIndicatorSize.tab,
         indicatorPadding: EdgeInsets.zero,
-        indicator: BoxDecoration(color: t.sidebarPrimary, borderRadius: pillRadius),
+        indicator:
+            BoxDecoration(color: t.sidebarPrimary, borderRadius: pillRadius),
         splashBorderRadius: pillRadius,
         dividerColor: Colors.transparent,
         labelColor: t.sidebarPrimaryForeground,
@@ -565,7 +585,7 @@ class _LockedBanner extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Icon(Icons.lock_outline, size: 16, color: scheme.outline),
+          Icon(Icons.lock_outline, size: 16, color: context.appTokens.mutedForeground),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
@@ -574,7 +594,7 @@ class _LockedBanner extends StatelessWidget {
               style: Theme.of(context)
                   .textTheme
                   .bodySmall
-                  ?.copyWith(color: scheme.outline),
+                  ?.copyWith(color: context.appTokens.mutedForeground),
             ),
           ),
         ],
@@ -605,14 +625,15 @@ class _OverviewTab extends StatelessWidget {
         // itemizes them with add/edit/remove — so the money and the charges
         // that make it up live in one place instead of two stacked cards.
         PaymentSection(order: order),
+        const SizedBox(height: 12),
+        OrderDocumentActions(order: order),
       ],
     );
   }
 }
 
-/// Status history and document actions — "everything that happened on this
-/// order," as distinct from its current state (fixed header) or its
-/// contents (Outfits tab).
+/// Status history — "everything that happened on this order," as distinct
+/// from its current state (fixed header) or its contents (Outfits tab).
 class _ActivityTab extends StatelessWidget {
   const _ActivityTab({required this.order, required this.onRefresh});
 
@@ -625,8 +646,6 @@ class _ActivityTab extends StatelessWidget {
       onRefresh: onRefresh,
       children: [
         OrderActivitySection(order: order),
-        const SizedBox(height: 12),
-        OrderDocumentActions(order: order),
       ],
     );
   }
@@ -642,6 +661,7 @@ class _OutfitsTab extends StatelessWidget {
     required this.onRefresh,
     required this.onAddItem,
     required this.onEditItem,
+    this.highlightItemId,
   });
 
   final Order order;
@@ -649,6 +669,7 @@ class _OutfitsTab extends StatelessWidget {
   final Future<void> Function() onRefresh;
   final VoidCallback onAddItem;
   final ValueChanged<OrderItem> onEditItem;
+  final String? highlightItemId;
 
   @override
   Widget build(BuildContext context) {
@@ -671,12 +692,92 @@ class _OutfitsTab extends StatelessWidget {
           )
         else
           for (final item in order.items)
-            _OrderItemCard(
-              orderId: order.id,
-              item: item,
-              onTap: order.isLocked ? null : () => onEditItem(item),
+            _HighlightOnArrival(
+              active: item.id == highlightItemId,
+              builder: (highlight) => _OrderItemCard(
+                orderId: order.id,
+                item: item,
+                onTap: order.isLocked ? null : () => onEditItem(item),
+                highlight: highlight,
+              ),
             ),
       ],
+    );
+  }
+}
+
+/// When its card is the deep-link target, scrolls it into view on first
+/// frame and drives a 0→1→0 pulse the card paints as a primary ring — a
+/// "here it is" cue that then fades out of the way rather than lingering as
+/// a selection. Inactive, it just builds the card once with no ring and no
+/// animation cost.
+class _HighlightOnArrival extends StatefulWidget {
+  const _HighlightOnArrival({required this.active, required this.builder});
+
+  final bool active;
+  final Widget Function(double highlight) builder;
+
+  @override
+  State<_HighlightOnArrival> createState() => _HighlightOnArrivalState();
+}
+
+class _HighlightOnArrivalState extends State<_HighlightOnArrival>
+    with SingleTickerProviderStateMixin {
+  // Nullable, and created ONLY for the active card. A `late final ... =
+  // AnimationController(vsync: this)` would be lazily built the first time
+  // it's touched — and for every non-target card that first touch is
+  // `dispose()`, which spins up a Ticker (an inherited-widget lookup) on an
+  // already-deactivated element and throws "deactivated widget's ancestor is
+  // unsafe". Building it eagerly here, only when needed, avoids that entirely.
+  AnimationController? _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    if (!widget.active) return;
+
+    final controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2400),
+    );
+    _controller = controller;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      try {
+        await Scrollable.ensureVisible(
+          context,
+          alignment: 0.12,
+          duration: const Duration(milliseconds: 450),
+          curve: Curves.easeOutCubic,
+        );
+      } catch (_) {
+        // The card left the tree mid-scroll (e.g. a tab swipe) — the ancestor
+        // Scrollable is gone; just skip the scroll and let the pulse run.
+      }
+      if (mounted) controller.forward(from: 0);
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = _controller;
+    if (controller == null) return widget.builder(0);
+    return AnimatedBuilder(
+      animation: controller,
+      builder: (context, _) {
+        // Rise fast (first quarter), then ease back to nothing.
+        final v = controller.value;
+        final intensity =
+            (v < 0.25 ? v / 0.25 : 1 - (v - 0.25) / 0.75).clamp(0.0, 1.0);
+        return widget.builder(intensity);
+      },
     );
   }
 }
@@ -712,8 +813,9 @@ class _Header extends StatelessWidget {
   Widget build(BuildContext context) {
     final isRush = _isElevatedPriority(order.priority);
     final scheme = Theme.of(context).colorScheme;
+    final mutedForeground = context.appTokens.mutedForeground;
     final priorityColor =
-        isRush ? _priorityColor(order.priority, scheme) : scheme.outline;
+        isRush ? _priorityColor(order.priority, scheme) : mutedForeground;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -740,12 +842,11 @@ class _Header extends StatelessWidget {
             Text(
               priorityLabel(order.priority),
               style: isRush
-                  ? TextStyle(
-                      color: priorityColor, fontWeight: FontWeight.w600)
+                  ? TextStyle(color: priorityColor, fontWeight: FontWeight.w600)
                   : null,
             ),
             const SizedBox(width: 16),
-            Icon(Icons.event_outlined, size: 16, color: scheme.outline),
+            Icon(Icons.event_outlined, size: 16, color: mutedForeground),
             const SizedBox(width: 4),
             Text('Due ${_fmtDate(order.dueDate)}'),
           ],
@@ -772,7 +873,7 @@ Color _priorityColor(String priority, ColorScheme scheme) {
     case 'high':
       return StatusColors.priorityHigh(scheme);
     default:
-      return scheme.outline;
+      return scheme.outlineVariant;
   }
 }
 
@@ -815,8 +916,7 @@ class _StatusChip extends StatelessWidget {
       tooltip: 'Change status',
       position: PopupMenuPosition.under,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      itemBuilder: (context) =>
-          _menuItems(status, transitions, scheme),
+      itemBuilder: (context) => _menuItems(status, transitions, scheme),
       child: pill,
     );
   }
@@ -1004,11 +1104,16 @@ class _OrderItemCard extends StatelessWidget {
     required this.orderId,
     required this.item,
     this.onTap,
+    this.highlight = 0.0,
   });
 
   final String orderId;
   final OrderItem item;
   final VoidCallback? onTap;
+
+  /// 0→1 intensity of the deep-link "here it is" ring, driven by
+  /// [_HighlightOnArrival]. 0 (the default) paints no ring.
+  final double highlight;
 
   // Fabric rows, the measurement snapshot, and style-ref thumbnails are all
   // real detail people want, but not on every glance down the list — with
@@ -1018,95 +1123,136 @@ class _OrderItemCard extends StatelessWidget {
   // detail is one tap away instead of unavoidable scroll weight.
   bool get _hasExpandableDetails =>
       item.fabrics.isNotEmpty ||
-      item.measurementSetId != null ||
+      item.measurementSetIds.isNotEmpty ||
       item.styleReferences.isNotEmpty;
 
   @override
   Widget build(BuildContext context) {
-    final summaryRow = InkWell(
-      borderRadius: BorderRadius.circular(12),
+    final theme = Theme.of(context);
+    final muted = context.appTokens.mutedForeground;
+
+    // Two independent tap targets share the card: the header opens the item
+    // editor (disabled when the order is locked, i.e. onTap == null), and the
+    // status bar below always opens the production task (or the create-task
+    // flow). Nesting them as siblings in a Column — rather than one InkWell
+    // wrapping everything — keeps the gestures from swallowing each other.
+    final header = InkWell(
       onTap: onTap,
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (item.primaryFabricImageUrl != null &&
-                item.primaryFabricImageUrl!.isNotEmpty) ...[
-              GestureDetector(
-                onTap: () => showImageViewer(
-                  context,
-                  urls: [item.primaryFabricImageUrl!],
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: Image.network(
-                    item.primaryFabricImageUrl!,
-                    width: 52,
-                    height: 52,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => const SizedBox(
-                      width: 52,
-                      height: 52,
-                      child: Icon(Icons.broken_image_outlined),
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-            ],
+            _OutfitThumb(item: item),
+            const SizedBox(width: 14),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(item.garmentType,
-                      style: Theme.of(context).textTheme.titleMedium),
-                  if (item.description != null && item.description!.isNotEmpty)
-                    Text(item.description!),
-                  const SizedBox(height: 2),
-                  Text(
-                    'Qty ${item.quantity} · ${formatNaira(item.unitPrice)} each · ${formatNaira(item.lineTotal)}',
-                    style: Theme.of(context).textTheme.bodySmall,
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          item.garmentType,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                            height: 1.1,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Text(
+                        formatNaira(item.lineTotal),
+                        style: theme.textTheme.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w700),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 4),
-                  _MetaChip(
-                    icon: item.recipient.isGuest
-                        ? Icons.person_outline
-                        : Icons.account_circle_outlined,
-                    label: item.recipient.isGuest
-                        ? 'For a guest'
-                        : 'For the client',
+                  if (item.description != null &&
+                      item.description!.isNotEmpty) ...[
+                    const SizedBox(height: 3),
+                    Text(
+                      item.description!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall?.copyWith(color: muted),
+                    ),
+                  ],
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Icon(
+                        item.recipient.isGuest
+                            ? Icons.person_outline
+                            : Icons.account_circle_outlined,
+                        size: 14,
+                        color: muted,
+                      ),
+                      const SizedBox(width: 5),
+                      Flexible(
+                        child: Text(
+                          '${item.recipient.isGuest ? 'For a guest' : 'For the client'}  ·  Qty ${item.quantity} · ${formatNaira(item.unitPrice)}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style:
+                              theme.textTheme.bodySmall?.copyWith(color: muted),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
             ),
-            const SizedBox(width: 8),
-            _ProductionChip(orderId: orderId, item: item),
           ],
         ),
       ),
     );
 
-    if (!_hasExpandableDetails) {
-      return Card(margin: const EdgeInsets.only(bottom: 8), child: summaryRow);
-    }
-
     return Card(
-      margin: const EdgeInsets.only(bottom: 8),
+      margin: const EdgeInsets.only(bottom: 12),
       clipBehavior: Clip.antiAlias,
+      shape: highlight > 0
+          ? RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: BorderSide(
+                color: theme.colorScheme.primary.withValues(alpha: highlight),
+                width: 2,
+              ),
+            )
+          : null,
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          summaryRow,
-          Theme(
+          header,
+          // Details (fabrics, measurement snapshot, style refs) sits between
+          // the header and the status footer so the tinted strip stays the
+          // card's true bottom edge — expanding Details grows the card
+          // upward of the footer, never below it.
+          if (_hasExpandableDetails)
+            Theme(
             // Strip the default divider lines an ExpansionTile draws above
             // and below itself — they read as a stray rule inside the card.
-            data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+            // The ListTileTheme collapses the tile's intrinsic ~56px height
+            // down to roughly half that — ExpansionTile's own `tilePadding`
+            // controls the row's padding, not the minimum height a plain
+            // ListTile reserves internally.
+            data: Theme.of(context).copyWith(
+              dividerColor: Colors.transparent,
+              listTileTheme: const ListTileThemeData(
+                dense: true,
+                minVerticalPadding: 0,
+                visualDensity: VisualDensity(vertical: -4),
+              ),
+            ),
             child: ExpansionTile(
               tilePadding: const EdgeInsets.symmetric(horizontal: 12),
               childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
               title: Text('Details',
                   style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                        color: Theme.of(context).colorScheme.outline,
+                        color: context.appTokens.mutedForeground,
                       )),
               children: [
                 Column(
@@ -1121,7 +1267,7 @@ class _OrderItemCard extends StatelessWidget {
                             children: [
                               Icon(Icons.texture_outlined,
                                   size: 14,
-                                  color: Theme.of(context).colorScheme.outline),
+                                  color: context.appTokens.mutedForeground),
                               const SizedBox(width: 6),
                               Expanded(
                                 child: Text.rich(
@@ -1150,11 +1296,11 @@ class _OrderItemCard extends StatelessWidget {
                             ],
                           ),
                         ),
-                    // The snapshot the garment is cut from — replaces the
-                    // old dead "Cut from saved measurements" chip. Values
-                    // and notes load on first expand, not with the card.
-                    if (item.measurementSetId != null)
-                      MeasurementSnapshotSection(setId: item.measurementSetId!),
+                    // The snapshots the garment is cut from — one section per
+                    // linked set (a top + skirt outfit shows both). Values and
+                    // notes load on first expand, not with the card.
+                    for (final sid in item.measurementSetIds)
+                      MeasurementSnapshotSection(setId: sid),
                     if (item.styleReferences.isNotEmpty) ...[
                       const SizedBox(height: 8),
                       _StyleRefThumbs(item: item),
@@ -1164,67 +1310,149 @@ class _OrderItemCard extends StatelessWidget {
               ],
             ),
           ),
+          _OutfitStatusBar(orderId: orderId, item: item),
         ],
       ),
     );
   }
 }
 
-/// The item's derived production state, as a tappable chip. No task yet →
-/// a "Create task" affordance; with a task → the composite label
-/// ("Cutting — up next"), error-tinted when overdue, opening the task
-/// detail. Never editable in place — production moves through the task
-/// screen only.
-class _ProductionChip extends StatelessWidget {
-  const _ProductionChip({required this.orderId, required this.item});
+/// The garment's fabric photo, or a typed placeholder tile when there's no
+/// photo yet — so every card reads as a consistent object rather than some
+/// with a thumbnail and some with a ragged text-only left edge. Tapping a
+/// real photo opens the viewer; the placeholder is inert (the header's own
+/// tap handles the item).
+class _OutfitThumb extends StatelessWidget {
+  const _OutfitThumb({required this.item});
+
+  final OrderItem item;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.appTokens;
+    final scheme = Theme.of(context).colorScheme;
+    final url = item.primaryFabricImageUrl;
+    final radius = BorderRadius.circular(tokens.radiusMd);
+
+    if (url != null && url.isNotEmpty) {
+      return GestureDetector(
+        onTap: () => showImageViewer(context, urls: [url]),
+        child: ClipRRect(
+          borderRadius: radius,
+          child: Image.network(
+            url,
+            width: 60,
+            height: 60,
+            fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) =>
+                _placeholderTile(scheme, tokens, radius),
+          ),
+        ),
+      );
+    }
+    return _placeholderTile(scheme, tokens, radius);
+  }
+
+  Widget _placeholderTile(
+      ColorScheme scheme, AppTokens tokens, BorderRadius radius) {
+    return Container(
+      width: 60,
+      height: 60,
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest,
+        borderRadius: radius,
+      ),
+      child: Icon(_garmentIcon(item.garmentType),
+          size: 26, color: tokens.mutedForeground),
+    );
+  }
+}
+
+/// A rough garment-type → icon map for the placeholder tile. Best-effort
+/// only: anything unrecognised falls back to the generic hanger.
+IconData _garmentIcon(String garmentType) {
+  final t = garmentType.toLowerCase();
+  if (t.contains('gown') || t.contains('dress')) return Icons.woman;
+  if (t.contains('suit') || t.contains('agbada') || t.contains('jacket')) {
+    return Icons.checkroom;
+  }
+  return Icons.checkroom_outlined;
+}
+
+/// Full-width, color-coded production strip anchored to the bottom of the
+/// card. Replaces the old cramped `ActionChip` that competed with the price
+/// for horizontal space. The tint encodes the state at a glance — muted for
+/// queued, warm for in-progress, green for done, the error color when
+/// overdue, the primary accent for the "create task" prompt — and the whole
+/// strip is the tap target (task detail, or the create-task flow).
+class _OutfitStatusBar extends StatelessWidget {
+  const _OutfitStatusBar({required this.orderId, required this.item});
 
   final String orderId;
   final OrderItem item;
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
     final production = item.production;
 
+    late final Color tint;
+    late final IconData icon;
+    late final String label;
     if (!production.hasTask) {
-      return ActionChip(
-        avatar: Icon(Icons.add_task, size: 16, color: scheme.primary),
-        label: const Text('Create task'),
-        visualDensity: VisualDensity.compact,
-        onPressed: () =>
-            context.push('/orders/$orderId/items/${item.id}/task/new'),
-      );
+      tint = scheme.primary;
+      icon = Icons.add_task;
+      label = 'Create task';
+    } else if (production.isOverdue) {
+      tint = scheme.error;
+      icon = Icons.error_outline;
+      label = production.label;
+    } else if (production.done) {
+      tint = StatusColors.orderDelivered;
+      icon = Icons.check_circle_outline;
+      label = production.label;
+    } else if (production.currentStageStarted) {
+      // Actively-worked stage rides the brand primary, not the orange
+      // "urgent" tint — in-progress is the normal happy path, not an alarm.
+      tint = scheme.primary;
+      icon = Icons.autorenew_rounded;
+      label = production.label;
+    } else {
+      tint = context.appTokens.mutedForeground;
+      icon = Icons.schedule_rounded;
+      label = production.label;
     }
 
-    final overdue = production.isOverdue;
-    return ActionChip(
-      label: Text(production.label),
-      labelStyle: overdue ? TextStyle(color: scheme.onErrorContainer) : null,
-      backgroundColor: overdue ? scheme.errorContainer : null,
-      visualDensity: VisualDensity.compact,
-      onPressed: () => context.push(taskDetailPath(production.taskId!)),
-    );
-  }
-}
-
-class _MetaChip extends StatelessWidget {
-  const _MetaChip({required this.icon, required this.label});
-
-  final IconData icon;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    final color = Theme.of(context).colorScheme.outline;
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, size: 15, color: color),
-        const SizedBox(width: 4),
-        Text(label,
-            style:
-                Theme.of(context).textTheme.bodySmall?.copyWith(color: color)),
-      ],
+    return InkWell(
+      onTap: () => production.hasTask
+          ? context.push(taskDetailPath(production.taskId!))
+          : context.push('/orders/$orderId/items/${item.id}/task/new'),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: tint.withValues(alpha: 0.12),
+          border: Border(top: BorderSide(color: tint.withValues(alpha: 0.22))),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          child: Row(
+            children: [
+              Icon(icon, size: 16, color: tint),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.labelLarge
+                      ?.copyWith(color: tint, fontWeight: FontWeight.w600),
+                ),
+              ),
+              Icon(Icons.chevron_right_rounded, size: 18, color: tint),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/auth/auth_state.dart';
+import '../../../core/utils/fake_latency.dart';
 import '../data/order_repository.dart';
 import '../models/order.dart';
 import 'order_list_state.dart';
@@ -48,6 +49,7 @@ class OrderListNotifier extends AsyncNotifier<OrderListState> {
     required int page,
     required OrderListState filters,
   }) async {
+    await fakeLatency(); // no-op unless kFakeLatency is on in a debug build
     final response = await _requestPage(filters, page);
     return filters.copyWith(
       items: response.results,

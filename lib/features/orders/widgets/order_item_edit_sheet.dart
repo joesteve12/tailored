@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show setEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -60,7 +61,7 @@ class _OrderItemEditSheetState extends ConsumerState<OrderItemEditSheet> {
   late final TextEditingController _notesController;
 
   late RecipientRef _recipient;
-  late String? _measurementSetId;
+  late List<String> _measurementSetIds;
 
   bool _saving = false;
   bool _busyStyle = false;
@@ -78,7 +79,7 @@ class _OrderItemEditSheetState extends ConsumerState<OrderItemEditSheet> {
         TextEditingController(text: item.unitPrice.toStringAsFixed(2));
     _notesController = TextEditingController(text: item.notes ?? '');
     _recipient = item.recipient;
-    _measurementSetId = item.measurementSetId;
+    _measurementSetIds = List<String>.from(item.measurementSetIds);
   }
 
   @override
@@ -115,7 +116,12 @@ class _OrderItemEditSheetState extends ConsumerState<OrderItemEditSheet> {
 
     final original = widget.item;
     final recipientChanged = _recipient != original.recipient;
-    final snapshotChanged = _measurementSetId != original.measurementSetId;
+    // Order-independent compare — the backend re-sorts snapshots on read, so
+    // only a change in *which* sets are linked counts as an edit.
+    final snapshotChanged = !setEquals(
+      _measurementSetIds.toSet(),
+      original.measurementSetIds.toSet(),
+    );
 
     setState(() => _saving = true);
     try {
@@ -127,10 +133,9 @@ class _OrderItemEditSheetState extends ConsumerState<OrderItemEditSheet> {
         unitPrice: double.parse(_priceController.text.trim()),
         notes: _notesController.text.trim(),
         recipient: recipientChanged ? _recipient : null,
-        measurementSetId: snapshotChanged ? _measurementSetId : null,
-        // Distinguish "cleared the snapshot" from "left it as-is": only send
-        // the explicit null when it actually changed to null.
-        clearMeasurementSet: snapshotChanged && _measurementSetId == null,
+        // Non-null list = replace (empty clears); null = leave untouched. Only
+        // send when it actually changed.
+        measurementSetIds: snapshotChanged ? _measurementSetIds : null,
       );
       if (mounted) _dismissSheet();
     } catch (e) {
@@ -290,7 +295,7 @@ class _OrderItemEditSheetState extends ConsumerState<OrderItemEditSheet> {
               const SizedBox(height: 8),
               TextFormField(
                 controller: _garmentController,
-                decoration: const InputDecoration(labelText: 'Garment type'),
+                decoration: const InputDecoration(labelText: 'Outfit type'),
                 textCapitalization: TextCapitalization.words,
                 validator: (v) =>
                     (v == null || v.trim().isEmpty) ? 'Required' : null,
@@ -361,14 +366,14 @@ class _OrderItemEditSheetState extends ConsumerState<OrderItemEditSheet> {
                 selected: _recipient,
                 onChanged: (r) => setState(() {
                   _recipient = r;
-                  _measurementSetId = null;
+                  _measurementSetIds = const [];
                 }),
               ),
               const SizedBox(height: 4),
               MeasurementSnapshotField(
                 recipient: _recipient,
-                selectedSetId: _measurementSetId,
-                onChanged: (id) => setState(() => _measurementSetId = id),
+                selectedSetIds: _measurementSetIds,
+                onChanged: (ids) => setState(() => _measurementSetIds = ids),
               ),
               const SizedBox(height: 20),
               FilledButton(
@@ -481,7 +486,7 @@ class _FabricsSectionState extends ConsumerState<_FabricsSection> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Remove fabric?'),
-        content: Text('${fabric.serial} will be removed from this garment.'),
+        content: Text('${fabric.serial} will be removed from this outfit.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -542,7 +547,7 @@ class _FabricsSectionState extends ConsumerState<_FabricsSection> {
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 4),
             child: Text(
-              'No fabric on this garment yet.',
+              'No fabric on this outfit yet.',
               style: Theme.of(context).textTheme.bodySmall,
             ),
           ),

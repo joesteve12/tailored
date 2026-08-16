@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/utils/errors.dart';
 import '../../../core/widgets/async_error_view.dart';
+import '../../../core/widgets/skeleton.dart';
 import '../data/task_repository.dart';
 import '../models/production_process.dart';
 import '../state/tasks_providers.dart';
@@ -248,7 +249,11 @@ class _ProcessesScreenState extends ConsumerState<ProcessesScreen> {
         label: const Text('New process'),
       ),
       body: processesAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
+        loading: () => SkeletonList(
+          scrollable: true,
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
+          itemBuilder: (_, __) => const SkeletonTile(hasLeading: false),
+        ),
         error: (err, _) => AsyncErrorView(
           error: err,
           onRetry: () async => _invalidate(),

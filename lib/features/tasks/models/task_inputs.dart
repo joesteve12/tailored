@@ -27,7 +27,7 @@ class GeneralTaskInput {
   const GeneralTaskInput({
     required this.title,
     required this.dueAt,
-    this.reminderMinutesBefore,
+    this.reminderEnabled = false,
     this.notes,
     this.orderId,
     this.clientId,
@@ -35,7 +35,10 @@ class GeneralTaskInput {
 
   final String title;
   final DateTime dueAt;
-  final int? reminderMinutesBefore;
+
+  /// Whether a reminder fires at [dueAt]. There is no offset — the reminder
+  /// instant IS the due time.
+  final bool reminderEnabled;
   final String? notes;
   final String? orderId;
   final String? clientId;
@@ -43,8 +46,7 @@ class GeneralTaskInput {
   Map<String, dynamic> toJson() => {
         'title': title,
         'due_at': dueAt.toUtc().toIso8601String(),
-        if (reminderMinutesBefore != null)
-          'reminder_minutes_before': reminderMinutesBefore,
+        'reminder_enabled': reminderEnabled,
         if (notes != null && notes!.isNotEmpty) 'notes': notes,
         if (orderId != null) 'order_id': orderId,
         if (clientId != null) 'client_id': clientId,

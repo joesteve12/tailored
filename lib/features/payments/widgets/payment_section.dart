@@ -278,7 +278,7 @@ class _PaymentSectionState extends ConsumerState<PaymentSection> {
         buffer.write('${trimTrailingZeros(order.discountValue)}%');
       if (!order.discountIncludesAddons) {
         if (isPercentage) buffer.write(' ');
-        buffer.write('on garments');
+        buffer.write('on outfits');
       }
       buffer.write(')');
     }
@@ -525,7 +525,7 @@ class _PaymentSectionState extends ConsumerState<PaymentSection> {
       // The garments base only earns its own line once there are extras to
       // split it from; otherwise Subtotal alone says it.
       if (hasAddons)
-        _leaderRow(scheme, 'Garments', formatNaira(order.itemsSubtotal),
+        _leaderRow(scheme, 'Outfits', formatNaira(order.itemsSubtotal),
             trailingColumn: removeColumn),
       // The extras subsection: a header carrying its own "+ Add" action, then
       // the itemized charges. Shown whenever there are charges to label or the
@@ -709,20 +709,35 @@ class _AddonLeaderRow extends StatelessWidget {
                   ),
                   const SizedBox(width: 5),
                 ],
-                Flexible(
-                  child: Text(
-                    label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                        color: scheme.onSurfaceVariant, fontSize: 12.5),
-                  ),
-                ),
-                const SizedBox(width: 6),
                 Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.only(bottom: 4),
-                    child: _DottedLine(color: _ticketHairline(scheme)),
+                  // Same leader-behind-label trick as the discount row: the
+                  // dots are drawn across the full remaining width, and the
+                  // label — which can be a long, freely-typed charge name
+                  // plus a "×qty" suffix — sits on top with an opaque
+                  // backing (this row's own band colour, surfaceContainerHighest,
+                  // not the card's) that masks the dots it covers. That way
+                  // the label gets all the space this row can spare instead
+                  // of splitting it evenly with the dots, and bounces
+                  // instead of ellipsizing if it still doesn't fit.
+                  child: Stack(
+                    alignment: Alignment.bottomLeft,
+                    children: [
+                      Positioned(
+                        left: 0,
+                        right: 0,
+                        bottom: 4,
+                        child: _DottedLine(color: _ticketHairline(scheme)),
+                      ),
+                      Container(
+                        color: scheme.surfaceContainerHighest,
+                        padding: const EdgeInsets.only(right: 6),
+                        child: _BouncingLabel(
+                          text: label,
+                          style: TextStyle(
+                              color: scheme.onSurfaceVariant, fontSize: 12.5),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
@@ -817,6 +832,10 @@ class _DiscountRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    // The same flat "paper" colour the ticket card is painted with — used
+    // below to mask the dotted leader behind the label, see the comment on
+    // the Stack.
+    final cardColor = scheme.surfaceContainerHigh;
     final row = Padding(
       padding: const EdgeInsets.symmetric(vertical: 2.5),
       child: Row(
@@ -838,15 +857,36 @@ class _DiscountRow extends StatelessWidget {
             ),
             const SizedBox(width: 5),
           ],
-          Text(
-            label,
-            style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12.5),
-          ),
-          const SizedBox(width: 6),
           Expanded(
-            child: Padding(
-              padding: const EdgeInsets.only(bottom: 4),
-              child: _DottedLine(color: _ticketHairline(scheme)),
+            // The dotted leader is drawn across the *entire* remaining
+            // width first, then the label is painted on top of it with an
+            // opaque backing (matching the card colour) that masks the
+            // dots it covers. That way the label always gets every pixel
+            // of space this row can spare — not a fixed or flex-split
+            // share — and the leader still visually "fills the gap" up to
+            // the value column, whatever the label's length turns out to
+            // be. This also guarantees the value itself lands at a fixed
+            // offset from the row's right edge, same as every other
+            // breakdown row, instead of drifting with the label's width.
+            child: Stack(
+              alignment: Alignment.bottomLeft,
+              children: [
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 4,
+                  child: _DottedLine(color: _ticketHairline(scheme)),
+                ),
+                Container(
+                  color: cardColor,
+                  padding: const EdgeInsets.only(right: 6),
+                  child: _BouncingLabel(
+                    text: label,
+                    style:
+                        TextStyle(color: scheme.onSurfaceVariant, fontSize: 12.5),
+                  ),
+                ),
+              ],
             ),
           ),
           const SizedBox(width: 6),
@@ -869,6 +909,92 @@ class _DiscountRow extends StatelessWidget {
       onTap: onEdit,
       borderRadius: BorderRadius.circular(6),
       child: row,
+    );
+  }
+}
+
+/// A single-line label that, when too wide for the space it's given, scrolls
+/// back and forth (pausing at each end) to reveal the full text instead of
+/// ellipsizing it away — used for the discount row's label, which carries a
+/// "on garments" qualifier that changes what the figure below it means and so
+/// is worth reading in full rather than cutting off after a couple of
+/// characters.
+class _BouncingLabel extends StatefulWidget {
+  const _BouncingLabel({required this.text, required this.style});
+
+  final String text;
+  final TextStyle style;
+
+  @override
+  State<_BouncingLabel> createState() => _BouncingLabelState();
+}
+
+class _BouncingLabelState extends State<_BouncingLabel> {
+  final ScrollController _scroll = ScrollController();
+
+  static const _pause = Duration(milliseconds: 650);
+  static const _pxPerSecond = 22;
+
+  @override
+  void initState() {
+    super.initState();
+    // Driven off the real ScrollController's maxScrollExtent (measured by
+    // the actual rendered RenderBox) rather than a hand-measured TextPainter
+    // width, which drifted from the real layout — the app's custom label
+    // font isn't guaranteed loaded on the first frame a TextPainter runs, so
+    // that estimate could under-count the overflow and lock the label into
+    // its unscrolled, hard-clipped position.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loop());
+  }
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loop() async {
+    while (mounted) {
+      if (!_scroll.hasClients) {
+        await Future.delayed(const Duration(milliseconds: 100));
+        continue;
+      }
+      // Re-read every cycle: font metrics can settle, or the label's text
+      // can change, after the loop has already started. A few pixels of
+      // "overflow" here is font-metric/DPI rounding noise, not real
+      // truncation — animating it would just jitter the label in place, so
+      // require a width worth actually scrolling for before bothering.
+      final extent = _scroll.position.maxScrollExtent;
+      if (extent <= 4) {
+        await Future.delayed(const Duration(milliseconds: 300));
+        continue;
+      }
+      final duration =
+          Duration(milliseconds: ((extent / _pxPerSecond).clamp(0.8, 6.0) * 1000).round());
+
+      await Future.delayed(_pause);
+      if (!mounted || !_scroll.hasClients) return;
+      await _scroll.animateTo(_scroll.position.maxScrollExtent,
+          duration: duration, curve: Curves.easeInOut);
+
+      await Future.delayed(_pause);
+      if (!mounted || !_scroll.hasClients) return;
+      await _scroll.animateTo(0, duration: duration, curve: Curves.easeInOut);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      controller: _scroll,
+      scrollDirection: Axis.horizontal,
+      physics: const NeverScrollableScrollPhysics(),
+      child: Text(
+        widget.text,
+        maxLines: 1,
+        softWrap: false,
+        style: widget.style,
+      ),
     );
   }
 }
@@ -1183,6 +1309,8 @@ class _DottedLine extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         const dotSpacing = 5.0;
+        // ignore: avoid_print
+        print('[_DottedLine] maxWidth=${constraints.maxWidth}');
         final count = math.max(2, (constraints.maxWidth / dotSpacing).floor());
         return SizedBox(
           height: 2,

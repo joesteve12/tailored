@@ -10,9 +10,11 @@ import '../../../core/theme/app_tokens.dart';
 import '../../../core/utils/order_labels.dart';
 import '../../../core/utils/payment_labels.dart';
 import '../../../core/widgets/async_error_view.dart';
+import '../../../core/widgets/skeleton.dart';
 import '../state/order_list_notifier.dart';
 import '../state/order_list_state.dart';
 import '../widgets/client_picker_sheet.dart';
+import '../widgets/order_card.dart';
 
 import '../../../core/widgets/feedback.dart';
 
@@ -74,6 +76,7 @@ class _OrderListScreenState extends ConsumerState<OrderListScreen> {
     final activeCount = currentState == null
         ? 0
         : (currentState.orderStatus != null ? 1 : 0) +
+            (currentState.paymentStatus != null ? 1 : 0) +
             (currentState.priority != null ? 1 : 0);
 
     return Scaffold(
@@ -121,7 +124,12 @@ class _OrderListScreenState extends ConsumerState<OrderListScreen> {
         ),
       ),
       body: listState.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
+        loading: () => const SkeletonList(
+          scrollable: true,
+          padding: EdgeInsets.fromLTRB(12, 12, 12, 12),
+          separatorHeight: 10,
+          itemBuilder: _orderSkeletonRow,
+        ),
         error: (err, _) => AsyncErrorView(
           error: err,
           onRetry: () => ref.read(orderListProvider.notifier).refresh(),
@@ -149,9 +157,9 @@ class _OrderListScreenState extends ConsumerState<OrderListScreen> {
                 }
 
                 final order = state.items[index];
-                return _OrderCard(
+                return OrderCard(
                   orderNumber: order.orderNumber,
-                  clientName: order.clientName,
+                  subtitle: order.clientName,
                   dueDate: order.dueDate,
                   paymentStatus: order.paymentStatus,
                   paymentStatusLabel: paymentStatusLabel(order.paymentStatus),
@@ -196,6 +204,7 @@ class _OrderListScreenState extends ConsumerState<OrderListScreen> {
       builder: (context) => _OrderFilterSheet(
         statusOptions: statusOptions,
         selectedStatus: state.orderStatus,
+        selectedPaymentStatus: state.paymentStatus,
         selectedPriority: state.priority,
         sortBy: state.sortBy,
       ),
@@ -206,6 +215,8 @@ class _OrderListScreenState extends ConsumerState<OrderListScreen> {
     ref.read(orderListProvider.notifier).setFilters(
           orderStatus: result.status,
           clearOrderStatus: result.status == null,
+          paymentStatus: result.paymentStatus,
+          clearPaymentStatus: result.paymentStatus == null,
           priority: result.priority,
           clearPriority: result.priority == null,
           sortBy: result.sortBy,
@@ -225,6 +236,18 @@ List<String> _orderStatusOptions(OrderListState state) =>
 /// for), so filtering is limited to high/urgent. The full [kPriorities] list
 /// still drives the priority *selector* on the order form.
 const List<String> _priorityFilterOptions = ['high', 'urgent'];
+
+/// Payment statuses offered as filters. Closed, small vocabulary — the same
+/// set the payments service assigns (see [paymentStatusLabel]) — so it's a
+/// fixed list rather than derived from the loaded orders. `overpaid` is kept
+/// in: a "refund due" worklist is exactly the kind of thing an owner filters
+/// down to.
+const List<String> _paymentStatusFilterOptions = [
+  'unpaid',
+  'partial',
+  'paid',
+  'overpaid',
+];
 
 /// The compacted filter control: an icon-only button that opens
 /// [_OrderFilterSheet]. A count badge appears when status/priority filters
@@ -339,9 +362,15 @@ class _OrderSearchFieldState extends ConsumerState<_OrderSearchField> {
 /// filter is cleared (for [sortBy], null means the default "Newest first"
 /// ordering, i.e. no `sort_by` param).
 class _OrderFilterResult {
-  const _OrderFilterResult({this.status, this.priority, this.sortBy});
+  const _OrderFilterResult({
+    this.status,
+    this.paymentStatus,
+    this.priority,
+    this.sortBy,
+  });
 
   final String? status;
+  final String? paymentStatus;
   final String? priority;
   final String? sortBy;
 }
@@ -354,12 +383,14 @@ class _OrderFilterSheet extends StatefulWidget {
   const _OrderFilterSheet({
     required this.statusOptions,
     required this.selectedStatus,
+    required this.selectedPaymentStatus,
     required this.selectedPriority,
     required this.sortBy,
   });
 
   final List<String> statusOptions;
   final String? selectedStatus;
+  final String? selectedPaymentStatus;
   final String? selectedPriority;
   final String? sortBy;
 
@@ -369,16 +400,22 @@ class _OrderFilterSheet extends StatefulWidget {
 
 class _OrderFilterSheetState extends State<_OrderFilterSheet> {
   late String? _status = widget.selectedStatus;
+  late String? _paymentStatus = widget.selectedPaymentStatus;
   late String? _priority = widget.selectedPriority;
   // Normalized so the default sort is always represented as null, matching
   // what the state/endpoint expect ("no sort_by param").
   late String? _sortBy =
       widget.sortBy == 'created_at' ? null : widget.sortBy;
 
-  bool get _isDirty => _status != null || _priority != null || _sortBy != null;
+  bool get _isDirty =>
+      _status != null ||
+      _paymentStatus != null ||
+      _priority != null ||
+      _sortBy != null;
 
   void _reset() => setState(() {
         _status = null;
+        _paymentStatus = null;
         _priority = null;
         _sortBy = null;
       });
@@ -432,6 +469,26 @@ class _OrderFilterSheetState extends State<_OrderFilterSheet> {
               ),
               const SizedBox(height: 20),
             ],
+            const _SheetGroupLabel('Payment'),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _FilterChip(
+                  label: 'Any payment',
+                  selected: _paymentStatus == null,
+                  onTap: () => setState(() => _paymentStatus = null),
+                ),
+                for (final ps in _paymentStatusFilterOptions)
+                  _FilterChip(
+                    label: paymentStatusLabel(ps),
+                    selected: _paymentStatus == ps,
+                    onTap: () => setState(() => _paymentStatus = ps),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 20),
             const _SheetGroupLabel('Priority'),
             const SizedBox(height: 10),
             Wrap(
@@ -477,6 +534,7 @@ class _OrderFilterSheetState extends State<_OrderFilterSheet> {
                   context,
                   _OrderFilterResult(
                     status: _status,
+                    paymentStatus: _paymentStatus,
                     priority: _priority,
                     sortBy: _sortBy,
                   ),
@@ -569,254 +627,14 @@ class _FilterChip extends StatelessWidget {
   }
 }
 
-class _OrderCard extends StatelessWidget {
-  const _OrderCard({
-    required this.orderNumber,
-    required this.clientName,
-    required this.dueDate,
-    required this.paymentStatus,
-    required this.paymentStatusLabel,
-    required this.status,
-    required this.statusLabel,
-    required this.priority,
-    required this.onTap,
-  });
-
-  final String orderNumber;
-  final String? clientName;
-  final DateTime dueDate;
-  final String paymentStatus;
-  final String paymentStatusLabel;
-  final String status;
-  final String statusLabel;
-  final String priority;
-  final VoidCallback onTap;
-
-  bool get _isElevatedPriority => priority == 'high' || priority == 'urgent';
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-    final overdue = dueDate.isBefore(DateTime.now());
-    final paymentMeta = _paymentMeta(paymentStatus, scheme);
-    // The client name rides on each order in the list response, so the card
-    // renders it directly — no per-row client fetch. A null/blank name (older
-    // rows, or a client since removed) just hides the line.
-    final name = clientName?.trim() ?? '';
-
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Material(
-        color: scheme.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(16),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(16),
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
-            child: IntrinsicHeight(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                if (_isElevatedPriority) ...[
-                  Container(
-                    width: 4,
-                    decoration: BoxDecoration(
-                      color: _priorityColor(priority, scheme),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                ],
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(
-                            child: Text(
-                              orderNumber,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: theme.textTheme.titleSmall?.copyWith(
-                                fontWeight: FontWeight.w700,
-                                fontFeatures: const [
-                                  FontFeature.tabularFigures(),
-                                ],
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          _StatusPill(status: status, label: statusLabel),
-                        ],
-                      ),
-                      if (name.isNotEmpty)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 2),
-                          child: Text(
-                            name,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: scheme.onSurfaceVariant,
-                            ),
-                          ),
-                        ),
-                      const SizedBox(height: 6),
-                      Row(
-                        children: [
-                          Icon(Icons.event_outlined,
-                              size: 14,
-                              color: overdue
-                                  ? StatusColors.urgent
-                                  : scheme.onSurfaceVariant),
-                          const SizedBox(width: 4),
-                          Text(
-                            'Due ${_fmtDate(dueDate)}',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: overdue
-                                  ? StatusColors.urgent
-                                  : scheme.onSurfaceVariant,
-                              fontWeight:
-                                  overdue ? FontWeight.w600 : FontWeight.w400,
-                            ),
-                          ),
-                          Expanded(
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.end,
-                              children: [
-                                Icon(paymentMeta.icon,
-                                    size: 14, color: paymentMeta.color),
-                                const SizedBox(width: 4),
-                                Flexible(
-                                  child: Text(
-                                    paymentStatusLabel,
-                                    overflow: TextOverflow.ellipsis,
-                                    style:
-                                        theme.textTheme.bodySmall?.copyWith(
-                                      color: paymentMeta.color,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 6),
-                                Icon(Icons.chevron_right,
-                                    size: 20, color: scheme.outlineVariant),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
+/// Loading placeholder for one order row — an order-number line, a couple of
+/// detail lines and a trailing chip block, mirroring [OrderCard].
+Widget _orderSkeletonRow(BuildContext context, int index) => const SkeletonTile(
+      hasLeading: false,
+      lineCount: 3,
+      hasTrailing: true,
+      padding: EdgeInsets.fromLTRB(14, 12, 10, 12),
     );
-  }
-}
-
-/// Color+icon coded pill for the known status enum (pending, in progress,
-/// on hold, delivered, cancelled). Falls back to a neutral outlined pill
-/// for any status value outside that set, so new/unrecognized statuses
-/// degrade gracefully instead of guessing a color for them.
-class _StatusPill extends StatelessWidget {
-  const _StatusPill({required this.status, required this.label});
-
-  final String status;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final meta = _statusMeta(status, scheme);
-
-    if (meta.isFallback) {
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-        decoration: BoxDecoration(
-          border: Border.all(color: scheme.outlineVariant),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Text(
-          label,
-          style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: scheme.onSurfaceVariant,
-                fontWeight: FontWeight.w600,
-              ),
-        ),
-      );
-    }
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: meta.color.withOpacity(0.14),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(meta.icon, size: 12, color: meta.color),
-          const SizedBox(width: 4),
-          Text(
-            label,
-            style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                  color: meta.color,
-                  fontWeight: FontWeight.w700,
-                ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _StatusMeta {
-  const _StatusMeta(this.color, this.icon, {this.isFallback = false});
-  final Color color;
-  final IconData icon;
-  final bool isFallback;
-}
-
-/// Maps the known status enum to a color + icon. Matching is done on a
-/// normalized form of the raw status value (lowercased, separators
-/// stripped) so it doesn't matter whether the backend sends
-/// "in_progress", "in-progress", or "In Progress". Anything outside the
-/// known set returns a fallback so unrecognized statuses stay neutral
-/// rather than being assigned an arbitrary color.
-_StatusMeta _statusMeta(String status, ColorScheme scheme) {
-  final key = status.toLowerCase().replaceAll(RegExp(r'[^a-z]'), '');
-  switch (key) {
-    case 'pending':
-      return const _StatusMeta(
-          StatusColors.orderPending, Icons.schedule_rounded);
-    case 'inprogress':
-      return const _StatusMeta(
-          StatusColors.orderInProgress, Icons.autorenew_rounded);
-    case 'onhold':
-      return const _StatusMeta(
-          StatusColors.orderOnHold, Icons.pause_circle_rounded);
-    case 'ready':
-      return const _StatusMeta(StatusColors.orderReady, Icons.task_alt_rounded);
-    case 'delivered':
-      return const _StatusMeta(
-          StatusColors.orderDelivered, Icons.check_circle_rounded);
-    case 'cancelled':
-    case 'canceled':
-      return _StatusMeta(StatusColors.cancelled(scheme), Icons.cancel_rounded);
-    default:
-      return _StatusMeta(scheme.onSurfaceVariant, Icons.circle,
-          isFallback: true);
-  }
-}
 
 class _EmptyState extends StatelessWidget {
   const _EmptyState({required this.onRefresh, this.isFiltered = false});
@@ -872,35 +690,6 @@ class _EmptyState extends StatelessWidget {
   }
 }
 
-/// Maps the payment status to a color + icon, same normalization approach
-/// as [_statusMeta] (lowercased, separators stripped) so "Paid", "PAID",
-/// etc. all match the backend's paid/partial/unpaid enum. Unpaid is left
-/// at the neutral color — it's the default/expected state, not a problem
-/// state, so it doesn't need to draw the eye the way partial or paid do.
-/// Unrecognized values fall back to the same neutral icon rather than
-/// guessing a color.
-class _PaymentMeta {
-  const _PaymentMeta(this.color, this.icon);
-  final Color color;
-  final IconData icon;
-}
-
-_PaymentMeta _paymentMeta(String paymentStatus, ColorScheme scheme) {
-  final key = paymentStatus.toLowerCase().replaceAll(RegExp(r'[^a-z]'), '');
-  switch (key) {
-    case 'paid':
-      return const _PaymentMeta(
-          StatusColors.paymentPaid, Icons.check_circle_outline);
-    case 'partial':
-      return const _PaymentMeta(
-          StatusColors.paymentPartial, Icons.incomplete_circle);
-    case 'unpaid':
-      return _PaymentMeta(scheme.onSurfaceVariant, Icons.payments_outlined);
-    default:
-      return _PaymentMeta(scheme.onSurfaceVariant, Icons.payments_outlined);
-  }
-}
-
 Color _priorityColor(String priority, ColorScheme scheme) {
   switch (priority) {
     case 'urgent':
@@ -911,10 +700,3 @@ Color _priorityColor(String priority, ColorScheme scheme) {
       return scheme.onSurfaceVariant;
   }
 }
-
-const _months = [
-  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
-];
-
-String _fmtDate(DateTime d) => '${_months[d.month - 1]} ${d.day}';

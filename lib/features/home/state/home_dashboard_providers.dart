@@ -1,18 +1,16 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-/// Sample home-dashboard data standing in for the not-yet-built
-/// `GET /home/summary` aggregate.
+import '../../../core/utils/fake_latency.dart';
+import '../data/home_repository.dart';
+
+/// Home-dashboard state.
 ///
-/// The "in production" hero and the revenue card need shop-wide rollups the
-/// API doesn't expose yet (see the Dashboard placeholder's note about the
-/// admin-stats endpoint). Until that endpoint lands, these providers return
-/// fixed sample figures so the redesigned Home is structurally complete and
-/// reviewable against the Figma. The Tasks feed here is likewise sample data
-/// scoped to what the Home preview shows — the full Tasks tab reads the real
-/// `taskListProvider`.
-///
-/// Swap each body for a repository call when the endpoint exists; the widget
-/// layer only ever reads these types, so nothing above this file changes.
+/// Everything the redesigned Home tab shows below the header is served by
+/// `GET /home/summary` (see [homeSummaryProvider] and [HomeRepository]): the
+/// "in production" hero, the revenue card, and the two preview feeds — Tasks
+/// and Orders — each a short list tagged with the [HomeRange] chip it sits
+/// under. The full Tasks / Orders tabs read their own list providers; these
+/// feeds are just the morning preview.
 
 /// One segment of the production pipeline breakdown under the hero count.
 class ProductionStage {
@@ -20,9 +18,16 @@ class ProductionStage {
 
   final String label;
   final int count;
+
+  factory ProductionStage.fromJson(Map<String, dynamic> json) =>
+      ProductionStage(json['label'] as String, json['count'] as int);
 }
 
 /// The hero "N orders / in production" block plus its stage breakdown.
+/// [ordersInProduction] counts orders in the "in production" status; [stages]
+/// is a separate view of where the garments in those orders currently sit, so
+/// the stage counts do NOT sum back to [ordersInProduction] (one order can
+/// hold several garments at different stages).
 class HomeProductionSnapshot {
   const HomeProductionSnapshot({
     required this.ordersInProduction,
@@ -31,11 +36,19 @@ class HomeProductionSnapshot {
 
   final int ordersInProduction;
   final List<ProductionStage> stages;
+
+  factory HomeProductionSnapshot.fromJson(Map<String, dynamic> json) =>
+      HomeProductionSnapshot(
+        ordersInProduction: json['orders_in_production'] as int,
+        stages: (json['stages'] as List)
+            .map((e) => ProductionStage.fromJson(e as Map<String, dynamic>))
+            .toList(),
+      );
 }
 
-/// The revenue card: money settled this month and what's still outstanding.
-/// Figures are naira, already-settled (the app never does money math) — the
-/// same contract [formatNaira] documents.
+/// The revenue card: net cash collected this month and what's still
+/// outstanding. Figures are naira, already-settled (the app never does money
+/// math) — the same contract [formatNaira] documents.
 class HomeRevenueSnapshot {
   const HomeRevenueSnapshot({
     required this.amount,
@@ -46,98 +59,134 @@ class HomeRevenueSnapshot {
   final double amount;
   final double outstanding;
   final String monthLabel;
+
+  factory HomeRevenueSnapshot.fromJson(Map<String, dynamic> json) =>
+      HomeRevenueSnapshot(
+        amount: (json['amount'] as num).toDouble(),
+        outstanding: (json['outstanding'] as num).toDouble(),
+        monthLabel: json['month_label'] as String,
+      );
 }
 
-/// The date window the Home task chips toggle between.
-enum TaskRange { today, thisWeek, nextWeek }
+/// The whole `GET /home/summary` payload: the two rollups plus the Tasks and
+/// Orders preview feeds the Home tab reads.
+class HomeSummary {
+  const HomeSummary({
+    required this.production,
+    required this.revenue,
+    required this.tasks,
+    required this.orders,
+  });
 
-/// Which attention bucket a task row sits in — drives the leading dot colour.
-enum HomeTaskBucket { overdue, dueToday, upcoming }
+  final HomeProductionSnapshot production;
+  final HomeRevenueSnapshot revenue;
+  final List<HomeTaskItem> tasks;
+  final List<HomeOrderItem> orders;
 
-/// One row in the Home tasks preview.
+  factory HomeSummary.fromJson(Map<String, dynamic> json) => HomeSummary(
+        production: HomeProductionSnapshot.fromJson(
+            json['production'] as Map<String, dynamic>),
+        revenue: HomeRevenueSnapshot.fromJson(
+            json['revenue'] as Map<String, dynamic>),
+        tasks: (json['tasks'] as List? ?? const [])
+            .map((e) => HomeTaskItem.fromJson(e as Map<String, dynamic>))
+            .toList(),
+        orders: (json['orders'] as List? ?? const [])
+            .map((e) => HomeOrderItem.fromJson(e as Map<String, dynamic>))
+            .toList(),
+      );
+}
+
+/// The Home hero + revenue rollups. `today` and the tz offset are computed at
+/// fetch time from the device clock — the whole point of the params is that
+/// the revenue month is the SHOP's month, and the device is where the shop is.
+final homeSummaryProvider = FutureProvider.autoDispose<HomeSummary>((ref) async {
+  await fakeLatency(); // no-op unless kFakeLatency is on in a debug build
+  final now = DateTime.now();
+  return ref.read(homeRepositoryProvider).summary(
+        today: now,
+        tzOffsetMinutes: now.timeZoneOffset.inMinutes,
+      );
+});
+
+/// The window a Tasks/Orders preview row sits in, and the chip the user
+/// toggles between. `overdue` is its own tab, so past-due work never hides
+/// under "Today". The leading-dot colour of a row is derived from this.
+enum HomeRange { overdue, today, thisWeek, nextWeek }
+
+/// Parse the backend's snake_case `range` string. Unknown values fall back to
+/// [HomeRange.today] rather than throwing — a preview row is never worth a
+/// crash on the morning screen.
+HomeRange _rangeFromJson(String raw) {
+  switch (raw) {
+    case 'overdue':
+      return HomeRange.overdue;
+    case 'this_week':
+      return HomeRange.thisWeek;
+    case 'next_week':
+      return HomeRange.nextWeek;
+    case 'today':
+    default:
+      return HomeRange.today;
+  }
+}
+
+/// One row in the Home Tasks preview. Covers both task kinds: [subtitle] is the
+/// current stage name for a production task and "To-do" for a general one.
 class HomeTaskItem {
   const HomeTaskItem({
+    required this.kind,
     required this.recipientName,
-    required this.garment,
-    required this.stageLabel,
-    required this.bucket,
+    required this.title,
+    required this.subtitle,
     required this.range,
   });
 
-  final String recipientName;
-  final String garment;
-  final String stageLabel;
-  final HomeTaskBucket bucket;
-  final TaskRange range;
+  /// 'production' | 'general'.
+  final String kind;
+  final String? recipientName;
+  final String title;
+  final String subtitle;
+  final HomeRange range;
+
+  factory HomeTaskItem.fromJson(Map<String, dynamic> json) => HomeTaskItem(
+        kind: json['kind'] as String,
+        recipientName: json['recipient_name'] as String?,
+        title: json['title'] as String,
+        subtitle: json['subtitle'] as String,
+        range: _rangeFromJson(json['range'] as String),
+      );
 }
 
-// TODO(home-summary): replace with a GET /home/summary repository call.
-final homeProductionProvider = Provider<HomeProductionSnapshot>((ref) {
-  return const HomeProductionSnapshot(
-    ordersInProduction: 6,
-    stages: <ProductionStage>[
-      ProductionStage('measuring', 1),
-      ProductionStage('cutting', 1),
-      ProductionStage('stitching', 2),
-      ProductionStage('fitting', 1),
-      ProductionStage('ready', 1),
-    ],
-  );
-});
+/// One row in the Home Orders preview — an open order bucketed by its due date.
+class HomeOrderItem {
+  const HomeOrderItem({
+    required this.orderId,
+    required this.orderNumber,
+    required this.clientName,
+    required this.status,
+    required this.garmentCount,
+    required this.range,
+  });
 
-// TODO(home-summary): replace with a GET /home/summary repository call.
-final homeRevenueProvider = Provider<HomeRevenueSnapshot>((ref) {
-  return const HomeRevenueSnapshot(
-    amount: 284000,
-    outstanding: 64000,
-    monthLabel: 'AUG 2026',
-  );
-});
+  final String orderId;
+  final String orderNumber;
+  final String? clientName;
 
-// TODO(home-summary): replace with the real home tasks feed.
-final homeTaskFeedProvider = Provider<List<HomeTaskItem>>((ref) {
-  return const <HomeTaskItem>[
-    HomeTaskItem(
-      recipientName: 'Adaeze',
-      garment: 'Agbada',
-      stageLabel: 'Stitching',
-      bucket: HomeTaskBucket.overdue,
-      range: TaskRange.today,
-    ),
-    HomeTaskItem(
-      recipientName: 'Musa',
-      garment: '3-piece suit',
-      stageLabel: 'Fitting',
-      bucket: HomeTaskBucket.dueToday,
-      range: TaskRange.today,
-    ),
-    HomeTaskItem(
-      recipientName: 'Ngozi',
-      garment: 'Aso-ebi gown',
-      stageLabel: 'Cutting',
-      bucket: HomeTaskBucket.dueToday,
-      range: TaskRange.today,
-    ),
-    HomeTaskItem(
-      recipientName: 'Chidi',
-      garment: 'Kaftan',
-      stageLabel: 'Measuring',
-      bucket: HomeTaskBucket.upcoming,
-      range: TaskRange.thisWeek,
-    ),
-    HomeTaskItem(
-      recipientName: 'Tunde',
-      garment: 'Senator wear',
-      stageLabel: 'Stitching',
-      bucket: HomeTaskBucket.upcoming,
-      range: TaskRange.thisWeek,
-    ),
-    HomeTaskItem(
-      recipientName: 'Amara',
-      garment: 'Wedding dress',
-      stageLabel: 'Measuring',
-      bucket: HomeTaskBucket.upcoming,
-      range: TaskRange.nextWeek,
-    ),
-  ];
-});
+  /// Order-level status wire value (pending / in_progress / on_hold / ready) —
+  /// render with `orderStatusLabel`.
+  final String status;
+
+  /// Sum of the order's item quantities.
+  final int garmentCount;
+  final HomeRange range;
+
+  factory HomeOrderItem.fromJson(Map<String, dynamic> json) => HomeOrderItem(
+        orderId: json['order_id'] as String,
+        orderNumber: json['order_number'] as String,
+        clientName: json['client_name'] as String?,
+        status: json['status'] as String,
+        garmentCount: json['garment_count'] as int,
+        range: _rangeFromJson(json['range'] as String),
+      );
+}

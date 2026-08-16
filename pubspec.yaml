@@ -4,7 +4,9 @@ publish_to: 'none'
 version: 0.1.0+1
 
 environment:
-  sdk: '>=3.3.0 <4.0.0'
+  # Floor raised from 3.3.0 to satisfy fl_chart 1.2.0 (charts on the Dashboard),
+  # which requires Dart >=3.6.2 / Flutter >=3.27.4.
+  sdk: '>=3.6.2 <4.0.0'
 
 dependencies:
   flutter:
@@ -42,6 +44,19 @@ dependencies:
   flutter_local_notifications: ^17.2.2
   timezone: ^0.9.4
   flutter_timezone: ^5.1.0
+  # New for the client detail screen's Call/WhatsApp/Message/Email quick
+  # actions: hands tel:/https://wa.me//sms:/mailto: URIs to the OS instead
+  # of the app trying to place calls or send messages itself.
+  url_launcher: ^6.3.1
+  # Renders the bundled WhatsApp brand glyph (assets/icons/whatsapp.svg) on the
+  # client detail phone row — Material has no WhatsApp icon. Tinted at runtime
+  # via colorFilter so it follows the scheme like the adjacent Material icons.
+  flutter_svg: ^2.0.10+1
+  # Month-grid calendar with swipe paging + per-day event markers, powering the
+  # Calendar screen. Pure-Dart, no native deps; we drive it from Riverpod state
+  # and feed markers from the cached per-month event map.
+  table_calendar: ^3.1.2
+  fl_chart: ^1.2.0
 
 dev_dependencies:
   flutter_test:
@@ -53,6 +68,9 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+
+  assets:
+    - assets/icons/
 
   # Brand fonts from tokens.json. Both are variable TrueType files (OFL,
   # bundled from github.com/google/fonts): a single asset per family covers

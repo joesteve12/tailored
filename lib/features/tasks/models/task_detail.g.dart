@@ -46,7 +46,7 @@ _$TaskDetailImpl _$$TaskDetailImplFromJson(Map<String, dynamic> json) =>
       dueAt: json['due_at'] == null
           ? null
           : DateTime.parse(json['due_at'] as String),
-      reminderMinutesBefore: (json['reminder_minutes_before'] as num?)?.toInt(),
+      reminderEnabled: json['reminder_enabled'] as bool?,
       remindAt: json['remind_at'] == null
           ? null
           : DateTime.parse(json['remind_at'] as String),
@@ -90,7 +90,7 @@ Map<String, dynamic> _$$TaskDetailImplToJson(_$TaskDetailImpl instance) =>
       'title': instance.title,
       'notes': instance.notes,
       'due_at': instance.dueAt?.toIso8601String(),
-      'reminder_minutes_before': instance.reminderMinutesBefore,
+      'reminder_enabled': instance.reminderEnabled,
       'remind_at': instance.remindAt?.toIso8601String(),
       'completed_at': instance.completedAt?.toIso8601String(),
       'client_id': instance.clientId,

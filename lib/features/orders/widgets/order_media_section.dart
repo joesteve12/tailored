@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/theme/app_tokens.dart';
 import '../../../core/utils/pick_image.dart';
 import '../models/order_media.dart';
 import '../state/order_detail_notifier.dart';
@@ -105,7 +106,7 @@ class _OrderMediaSectionState extends ConsumerState<OrderMediaSection> {
             Text(
               '${widget.media.length}/3',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(context).colorScheme.outline,
+                    color: context.appTokens.mutedForeground,
                   ),
             ),
             if (_busy) ...[
@@ -118,41 +119,50 @@ class _OrderMediaSectionState extends ConsumerState<OrderMediaSection> {
             ],
           ],
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 12),
         if (widget.media.isEmpty && !showAdd)
           Text(
             'No media',
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).colorScheme.outline,
+                  color: context.appTokens.mutedForeground,
                 ),
           )
-        else
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              for (var i = 0; i < widget.media.length; i++)
-                _MediaThumb(
-                  media: widget.media[i],
-                  // Collect all image URLs from the media list so tapping
-                  // one opens the whole gallery, letting the user swipe
-                  // through — videos are excluded because the viewer only
-                  // knows how to handle images.
-                  imageUrls: [
-                    for (final m in widget.media)
-                      if (m.fileType != 'video') m.fileUrl,
-                  ],
-                  imageIndex: [
-                    for (final m in widget.media)
-                      if (m.fileType != 'video') m,
-                  ].indexOf(widget.media[i]),
-                  onRemove:
-                      widget.enabled && !_busy ? () => _remove(widget.media[i]) : null,
-                ),
-              if (showAdd)
-                _AddTile(onTap: _busy ? null : _add),
-            ],
-          ),
+        else ...[
+          if (widget.media.isNotEmpty)
+            GridView.count(
+              crossAxisCount: 2,
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              crossAxisSpacing: 12,
+              mainAxisSpacing: 12,
+              childAspectRatio: 1,
+              children: [
+                for (var i = 0; i < widget.media.length; i++)
+                  _MediaThumb(
+                    media: widget.media[i],
+                    // Collect all image URLs from the media list so tapping
+                    // one opens the whole gallery, letting the user swipe
+                    // through — videos are excluded because the viewer only
+                    // knows how to handle images.
+                    imageUrls: [
+                      for (final m in widget.media)
+                        if (m.fileType != 'video') m.fileUrl,
+                    ],
+                    imageIndex: [
+                      for (final m in widget.media)
+                        if (m.fileType != 'video') m,
+                    ].indexOf(widget.media[i]),
+                    onRemove: widget.enabled && !_busy
+                        ? () => _remove(widget.media[i])
+                        : null,
+                  ),
+              ],
+            ),
+          if (showAdd) ...[
+            if (widget.media.isNotEmpty) const SizedBox(height: 12),
+            _AddTile(onTap: _busy ? null : _add),
+          ],
+        ],
       ],
     );
   }
@@ -181,64 +191,76 @@ class _MediaThumb extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = context.appTokens;
     final isVideo = media.fileType == 'video';
-    return SizedBox(
-      width: 88,
-      height: 88,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          GestureDetector(
-            onTap: isVideo || imageIndex < 0
-                ? null
-                : () => showImageViewer(
-                      context,
-                      urls: imageUrls,
-                      initialIndex: imageIndex,
-                    ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: isVideo
-                  ? Container(
-                      color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                      child: const Icon(Icons.play_circle_outline, size: 28),
-                    )
-                  : Image.network(
-                      media.fileUrl,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => Container(
-                        color: Theme.of(context)
-                            .colorScheme
-                            .surfaceContainerHighest,
-                        child: const Icon(Icons.broken_image_outlined, size: 24),
+    final placeholder = Container(
+      color: t.sidebarAccent,
+      alignment: Alignment.center,
+      child: Icon(
+        isVideo ? Icons.play_circle_outline : Icons.image_outlined,
+        size: 28,
+        color: t.sidebarForeground.withValues(alpha: 0.35),
+      ),
+    );
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        GestureDetector(
+          onTap: isVideo || imageIndex < 0
+              ? null
+              : () => showImageViewer(
+                    context,
+                    urls: imageUrls,
+                    initialIndex: imageIndex,
+                  ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(t.radiusLg),
+            child: isVideo
+                ? placeholder
+                : Image.network(
+                    media.fileUrl,
+                    fit: BoxFit.cover,
+                    loadingBuilder: (_, child, progress) =>
+                        progress == null ? child : placeholder,
+                    errorBuilder: (_, __, ___) => Container(
+                      color: t.sidebarAccent,
+                      alignment: Alignment.center,
+                      child: Icon(
+                        Icons.broken_image_outlined,
+                        size: 24,
+                        color: t.sidebarForeground.withValues(alpha: 0.35),
                       ),
                     ),
+                  ),
+          ),
+        ),
+        if (onRemove != null)
+          Positioned(
+            top: -6,
+            right: -6,
+            child: IconButton(
+              visualDensity: VisualDensity.compact,
+              icon: CircleAvatar(
+                radius: 11,
+                backgroundColor: Theme.of(context).colorScheme.errorContainer,
+                child: Icon(
+                  Icons.close,
+                  size: 14,
+                  color: Theme.of(context).colorScheme.onErrorContainer,
+                ),
+              ),
+              onPressed: onRemove,
             ),
           ),
-          if (onRemove != null)
-            Positioned(
-              top: -6,
-              right: -6,
-              child: IconButton(
-                visualDensity: VisualDensity.compact,
-                icon: CircleAvatar(
-                  radius: 11,
-                  backgroundColor: Theme.of(context).colorScheme.errorContainer,
-                  child: Icon(
-                    Icons.close,
-                    size: 14,
-                    color: Theme.of(context).colorScheme.onErrorContainer,
-                  ),
-                ),
-                onPressed: onRemove,
-              ),
-            ),
-        ],
-      ),
+      ],
     );
   }
 }
 
+/// Full-width dashed dropzone, styled after the app's warm sidebar palette:
+/// a camera icon over a label, inside a dashed rounded-rect border rather
+/// than the solid one used elsewhere, so it reads as "drop something here"
+/// instead of just another filled tile.
 class _AddTile extends StatelessWidget {
   const _AddTile({this.onTap});
 
@@ -246,18 +268,74 @@ class _AddTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = context.appTokens;
+    final borderRadius = BorderRadius.circular(t.radiusLg);
+    final foreground = t.sidebarForeground.withValues(alpha: 0.55);
     return InkWell(
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: borderRadius,
       onTap: onTap,
-      child: Container(
-        width: 88,
-        height: 88,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: Theme.of(context).colorScheme.outline),
+      child: CustomPaint(
+        painter: _DashedBorderPainter(
+          color: t.sidebarForeground.withValues(alpha: 0.35),
+          borderRadius: borderRadius,
         ),
-        child: const Icon(Icons.add_a_photo_outlined),
+        child: Container(
+          width: double.infinity,
+          height: 96,
+          alignment: Alignment.center,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.camera_alt_outlined, color: foreground),
+              const SizedBox(height: 4),
+              Text(
+                'Add photo',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: foreground,
+                      fontWeight: t.fontWeightMedium,
+                    ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
+}
+
+/// Dashes a rounded-rect border by walking the path's arc length in on/off
+/// segments — Flutter has no built-in dashed [BoxDecoration], and this is a
+/// small enough shape not to warrant a package dependency.
+class _DashedBorderPainter extends CustomPainter {
+  const _DashedBorderPainter({required this.color, required this.borderRadius});
+
+  final Color color;
+  final BorderRadius borderRadius;
+
+  static const double _dashWidth = 6;
+  static const double _dashGap = 4;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rrect = borderRadius.toRRect(Offset.zero & size);
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5;
+    for (final metric in (Path()..addRRect(rrect)).computeMetrics()) {
+      var distance = 0.0;
+      while (distance < metric.length) {
+        final next = distance + _dashWidth;
+        canvas.drawPath(
+          metric.extractPath(distance, next.clamp(0, metric.length)),
+          paint,
+        );
+        distance = next + _dashGap;
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _DashedBorderPainter oldDelegate) =>
+      oldDelegate.color != color || oldDelegate.borderRadius != borderRadius;
 }

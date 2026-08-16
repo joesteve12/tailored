@@ -1,0 +1,204 @@
+<title>dinkee — New Dark Directions</title>
+<style>
+  :root {
+    --page-bg: #0C0C0E;
+    --ink: #ECECEF;
+    --ink-soft: #9A9AA2;
+    --hair: #ffffff16;
+    --chip-bg: #ffffff0c;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --grotesque: "Helvetica Neue", "Arial Nova", Arial, system-ui, sans-serif;
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Code", Menlo, Consolas, monospace;
+    --didone: "Didot", "Bodoni MT", "Playfair Display", "Hoefler Text", Georgia, serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--page-bg); color: var(--ink); font-family: var(--sans); -webkit-font-smoothing: antialiased; line-height: 1.5; }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 56px 24px 80px; }
+
+  .eyebrow { font-size: 12px; letter-spacing: .24em; text-transform: uppercase; color: var(--ink-soft); font-weight: 600; margin: 0 0 14px; }
+  h1 { font-family: var(--grotesque); font-weight: 700; font-size: clamp(28px, 5vw, 44px); line-height: 1.04; letter-spacing: -0.02em; margin: 0 0 12px; text-wrap: balance; }
+  .lede { max-width: 62ch; color: var(--ink-soft); font-size: 16px; margin: 0; }
+  .lede b { color: var(--ink); font-weight: 600; }
+
+  .grid { margin-top: 48px; display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 44px 40px; }
+  .concept { display: flex; flex-direction: column; gap: 16px; }
+  .concept .meta { display: flex; flex-direction: column; gap: 6px; }
+  .concept .tag { align-self: flex-start; font-size: 11px; letter-spacing: .16em; text-transform: uppercase; font-weight: 700; background: var(--chip-bg); border: 1px solid var(--hair); padding: 4px 9px; border-radius: 999px; }
+  .concept h2 { font-size: 20px; font-weight: 700; margin: 4px 0 0; letter-spacing: -0.01em; }
+  .concept .swatches { display: flex; gap: 6px; margin: 2px 0 2px; }
+  .concept .swatches i { width: 16px; height: 16px; border-radius: 5px; border: 1px solid #ffffff20; }
+  .concept p { margin: 0; color: var(--ink-soft); font-size: 13.5px; }
+
+  .phone { position: relative; width: 100%; aspect-ratio: 9 / 19.5; border-radius: 34px; padding: 9px; background: linear-gradient(160deg, #26262b, #0c0c0e); box-shadow: 0 22px 50px -20px #000000d0, 0 2px 0 #ffffff0e inset; }
+  .screen { position: relative; height: 100%; width: 100%; border-radius: 26px; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+  .notch { position: absolute; top: 9px; left: 50%; transform: translateX(-50%); width: 34%; height: 20px; background: #060608; border-radius: 0 0 12px 12px; z-index: 6; }
+  .status { position: absolute; top: 14px; left: 0; right: 0; z-index: 5; display: flex; justify-content: space-between; padding: 0 22px; font-size: 11px; font-weight: 600; opacity: .65; }
+  .stack { position: relative; z-index: 2; display: flex; flex-direction: column; align-items: center; text-align: center; }
+  .footnote { position: absolute; bottom: 28px; left: 0; right: 0; text-align: center; font-size: 10.5px; letter-spacing: .2em; text-transform: uppercase; }
+
+  /* ===== 1 · BESPOKE NOIR ===== */
+  .s-noir { background: radial-gradient(120% 80% at 50% 0%, #1a1a1d 0%, #0b0b0d 60%); color: #F2F0EB; }
+  .s-noir .status { color: #cececf; }
+  .s-noir .frame-line { position: absolute; inset: 26px; border: 1px solid #C9A86A44; border-radius: 4px; z-index: 1; }
+  .s-noir .stack { gap: 16px; }
+  .s-noir .mark { font-family: var(--grotesque); font-weight: 700; font-size: 44px; letter-spacing: .01em; }
+  .s-noir .rule { width: 44px; height: 1px; background: #C9A86A; }
+  .s-noir .sub { font-family: var(--grotesque); font-size: 10.5px; letter-spacing: .46em; text-transform: uppercase; color: #C9A86A; padding-left: .46em; }
+  .s-noir .footnote { color: #C9A86A99; }
+
+  /* ===== 2 · PATTERN DRAFT ===== */
+  .s-draft { background: linear-gradient(180deg, #0C1622 0%, #070C13 100%); color: #E8F1F8; }
+  .s-draft .status { color: #a9c4d6; }
+  .s-draft .grid-bg { position: absolute; inset: 0; z-index: 0; opacity: .5;
+    background-image: linear-gradient(#3b6f9a26 1px, transparent 1px), linear-gradient(90deg, #3b6f9a26 1px, transparent 1px);
+    background-size: 22px 22px; }
+  .s-draft .pat { position: absolute; inset: 0; z-index: 1; }
+  .s-draft .stack { gap: 12px; }
+  .s-draft .mark { font-family: var(--mono); font-weight: 600; font-size: 34px; letter-spacing: .02em; color: #EAF4FB; }
+  .s-draft .sub { font-family: var(--mono); font-size: 10px; letter-spacing: .32em; text-transform: uppercase; color: #6FB4E0; }
+  .s-draft .footnote { font-family: var(--mono); color: #6fb4e099; letter-spacing:.24em; }
+
+  /* ===== 3 · ATELIER (didone + brass) ===== */
+  .s-atelier { background: radial-gradient(110% 80% at 50% 30%, #12211A 0%, #08110C 70%); color: #F0EDE2; }
+  .s-atelier .status { color: #cbdccf; }
+  .s-atelier .stack { gap: 18px; }
+  .s-atelier .mark { font-family: var(--didone); font-weight: 500; font-size: 50px; letter-spacing: .005em; }
+  .s-atelier .divider { display: flex; align-items: center; gap: 12px; }
+  .s-atelier .divider i { width: 34px; height: 1px; background: #B98F52; }
+  .s-atelier .divider svg { display:block; }
+  .s-atelier .sub { font-family: var(--didone); font-style: italic; font-size: 14px; letter-spacing: .04em; color: #D8B57E; }
+  .s-atelier .footnote { color: #b98f5299; letter-spacing:.24em; }
+
+  /* ===== 4 · THREAD (ink + neon) ===== */
+  .s-thread { background: #08080A; color: #F4F4F6; }
+  .s-thread .status { color: #b9b9bf; }
+  .s-thread .neon { position:absolute; inset:0; z-index:1; }
+  .s-thread .stack { gap: 14px; }
+  .s-thread .mark { font-family: var(--grotesque); font-weight: 800; font-size: 46px; letter-spacing: -0.03em; }
+  .s-thread .mark b { color: #C6FF3D; font-weight: 800; }
+  .s-thread .sub { font-family: var(--grotesque); font-size: 10.5px; letter-spacing: .34em; text-transform: uppercase; color: #9a9aa2; }
+  .s-thread .footnote { color: #C6FF3D88; }
+
+  /* animations */
+  @keyframes dashdraw { to { stroke-dashoffset: 0; } }
+  @keyframes threadrun { 0%{stroke-dashoffset: 620;} 100%{stroke-dashoffset: 0;} }
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+  .fade { animation: fadeUp .7s .1s both cubic-bezier(.2,.7,.2,1); }
+  .draw { stroke-dasharray: 7 7; stroke-dashoffset: 700; animation: dashdraw 3s linear infinite; }
+  .runline { stroke-dasharray: 620; animation: threadrun 3.2s ease-in-out infinite; }
+  @media (prefers-reduced-motion: reduce){ .fade,.draw,.runline{ animation:none; } .draw{stroke-dashoffset:0;} .runline{stroke-dashoffset:0;} }
+
+  footer.note { margin-top: 60px; padding-top: 22px; border-top: 1px solid var(--hair); color: var(--ink-soft); font-size: 13px; max-width: 72ch; }
+
+  .swn i:nth-child(1){background:#0B0B0D}.swn i:nth-child(2){background:#C9A86A}.swn i:nth-child(3){background:#F2F0EB}
+  .swd i:nth-child(1){background:#0C1622}.swd i:nth-child(2){background:#6FB4E0}.swd i:nth-child(3){background:#E8F1F8}
+  .swa i:nth-child(1){background:#0C1A14}.swa i:nth-child(2){background:#B98F52}.swa i:nth-child(3){background:#F0EDE2}
+  .swt i:nth-child(1){background:#08080A}.swt i:nth-child(2){background:#C6FF3D}.swt i:nth-child(3){background:#F4F4F6}
+</style>
+
+<div class="wrap">
+  <header>
+    <p class="eyebrow">dinkee · dark directions</p>
+    <h1>Four different looks — pick a lane</h1>
+    <p class="lede">All dark, but each is a distinct <b>identity</b>, not a variation on one: different palette, different typeface, different mood. From hushed bespoke luxury to a technical pattern draft to a sharp neon thread. Tell me which world feels like dinkee and I'll develop it.</p>
+  </header>
+
+  <div class="grid">
+
+    <!-- 1 · BESPOKE NOIR -->
+    <div class="concept">
+      <div class="phone"><div class="notch"></div><div class="screen s-noir">
+        <div class="status"><span>9:41</span><span>􀙇 􀛨 100%</span></div>
+        <div class="frame-line"></div>
+        <div class="stack fade">
+          <div class="mark">dinkee</div>
+          <div class="rule"></div>
+          <div class="sub">Bespoke</div>
+        </div>
+        <div class="footnote">est. 2026</div>
+      </div></div>
+      <div class="meta">
+        <span class="tag">Luxury · restrained</span>
+        <div class="swatches swn"><i></i><i></i><i></i></div>
+        <h2>Bespoke Noir</h2>
+        <p>Near-black with a thin champagne-gold hairline frame and a clean grotesque wordmark. Reads like a Savile Row label — quiet, expensive, no illustration.</p>
+      </div>
+    </div>
+
+    <!-- 2 · PATTERN DRAFT -->
+    <div class="concept">
+      <div class="phone"><div class="notch"></div><div class="screen s-draft">
+        <div class="status"><span>9:41</span><span>􀙇 􀛨 100%</span></div>
+        <div class="grid-bg"></div>
+        <svg class="pat" viewBox="0 0 300 640" preserveAspectRatio="xMidYMid slice" fill="none">
+          <!-- stylised bodice/sleeve pattern draft -->
+          <path class="draw" d="M70 120 C 60 240, 90 360, 150 430 C 210 360, 240 240, 230 120 C 200 150, 100 150, 70 120 Z" stroke="#6FB4E0" stroke-width="1.4"/>
+          <path class="draw" style="animation-delay:.4s" d="M150 150 L150 430" stroke="#3b6f9a" stroke-width="1" stroke-dasharray="4 6"/>
+          <circle cx="70" cy="120" r="3" stroke="#6FB4E0" stroke-width="1.2"/>
+          <circle cx="230" cy="120" r="3" stroke="#6FB4E0" stroke-width="1.2"/>
+          <circle cx="150" cy="430" r="3" stroke="#6FB4E0" stroke-width="1.2"/>
+        </svg>
+        <div class="stack fade">
+          <div class="mark">dinkee</div>
+          <div class="sub">pattern · draft · cut</div>
+        </div>
+        <div class="footnote">// loading bench</div>
+      </div></div>
+      <div class="meta">
+        <span class="tag">Technical · precise</span>
+        <div class="swatches swd"><i></i><i></i><i></i></div>
+        <h2>Pattern Draft</h2>
+        <p>A blueprint-blue grid with a self-drawing garment pattern behind a monospace wordmark. Nods to the craft of pattern-making — engineered, exact.</p>
+      </div>
+    </div>
+
+    <!-- 3 · ATELIER -->
+    <div class="concept">
+      <div class="phone"><div class="notch"></div><div class="screen s-atelier">
+        <div class="status"><span>9:41</span><span>􀙇 􀛨 100%</span></div>
+        <div class="stack fade">
+          <div class="mark">dinkee</div>
+          <div class="divider">
+            <i></i>
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#B98F52" stroke-width="1.2"><path d="M2 14 L14 2"/><circle cx="3" cy="13" r="1.3"/><path d="M12 2 h3 M13.5 .5 v3"/></svg>
+            <i></i>
+          </div>
+          <div class="sub">the tailor’s atelier</div>
+        </div>
+        <div class="footnote">hand · finished</div>
+      </div></div>
+      <div class="meta">
+        <span class="tag">Old-world · elegant</span>
+        <div class="swatches swa"><i></i><i></i><i></i></div>
+        <h2>Atelier</h2>
+        <p>Deep pine-green ground, a high-contrast Didone wordmark, and a small brass needle divider. Heritage and warmth without the cream — feels like a fitting room.</p>
+      </div>
+    </div>
+
+    <!-- 4 · THREAD -->
+    <div class="concept">
+      <div class="phone"><div class="notch"></div><div class="screen s-thread">
+        <div class="status"><span>9:41</span><span>􀙇 􀛨 100%</span></div>
+        <svg class="neon" viewBox="0 0 300 640" preserveAspectRatio="none" fill="none">
+          <path class="runline" d="M-10 210 C 80 150, 120 300, 210 250 C 300 210, 280 360, 330 330" stroke="#C6FF3D" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+        <div class="stack fade">
+          <div class="mark">din<b>k</b>ee</div>
+          <div class="sub">measure · make · move</div>
+        </div>
+        <div class="footnote">threading up</div>
+      </div></div>
+      <div class="meta">
+        <span class="tag">Modern · bold</span>
+        <div class="swatches swt"><i></i><i></i><i></i></div>
+        <h2>Thread</h2>
+        <p>Pure black, a heavy tight-set wordmark, and a single electric-lime thread that streaks across like a needle pull. Young, sharp, streetwear-tailoring energy.</p>
+      </div>
+    </div>
+
+  </div>
+
+  <footer class="note">
+    None of these use the current in-app terracotta/cream palette — they're deliberately fresh directions. Whichever you pick, I can either keep it as a bold standalone splash or tune it to sit alongside the app's existing theme. Say which lane and I'll refine it (type, motion, exact colours) before building the Flutter splash.
+  </footer>
+</div>

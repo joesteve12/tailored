@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/api/dio_client.dart';
 import '../models/client.dart';
 import '../models/client_list_response.dart';
+import '../state/client_stats_provider.dart';
 
 class ClientRepository {
   ClientRepository(this._dio);
@@ -30,6 +31,13 @@ class ClientRepository {
   Future<Client> getById(String id) async {
     final response = await _dio.get('/clients/$id');
     return Client.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  /// Revenue / outstanding / active-order / guest counts for the client
+  /// detail stats strip. Backs [clientStatsProvider].
+  Future<ClientStats> stats(String id) async {
+    final response = await _dio.get('/clients/$id/stats');
+    return ClientStats.fromJson(response.data as Map<String, dynamic>);
   }
 
   Future<Client> create({
