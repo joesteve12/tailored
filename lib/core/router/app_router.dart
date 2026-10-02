@@ -1,6 +1,10 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/widgets.dart';
 import 'package:go_router/go_router.dart';
+
+import '../ads/interstitial_ad_manager.dart';
+import '../../features/dev/screens/ads_debug_screen.dart';
 
 import '../../features/auth/screens/login_screen.dart';
 import '../../features/auth/screens/register_screen.dart';
@@ -40,6 +44,8 @@ import '../../features/measurements/screens/measurement_fields_screen.dart';
 import '../../features/measurements/screens/measurement_field_form_screen.dart';
 import '../../features/measurements/screens/measurement_templates_screen.dart';
 import '../../features/measurements/screens/measurement_template_form_screen.dart';
+import '../../features/billing/screens/manage_plan_screen.dart';
+import '../../features/billing/screens/checkout_webview_screen.dart';
 import '../auth/auth_state.dart';
 import '../auth/models/user.dart';
 
@@ -69,7 +75,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
   final refreshNotifier = _AuthRefreshNotifier(ref);
   ref.onDispose(refreshNotifier.dispose);
 
-  return GoRouter(
+  final router = GoRouter(
     navigatorKey: _rootNavigatorKey,
     initialLocation: '/login',
     refreshListenable: refreshNotifier,
@@ -342,6 +348,20 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const ProcessesScreen(),
       ),
 
+      // Billing: the "Plan & billing" screen (plan, usage, subscribe/renew,
+      // auto-renew toggle), and the in-app Paystack checkout WebView it pushes.
+      // The checkout route carries its CheckoutArgs via `extra`, like the
+      // measurement routes pass a RecipientRef.
+      GoRoute(
+        path: '/settings/plan',
+        builder: (context, state) => const ManagePlanScreen(),
+      ),
+      GoRoute(
+        path: '/billing/checkout',
+        builder: (context, state) =>
+            CheckoutWebViewScreen(args: state.extra as CheckoutArgs),
+      ),
+
       // Settings: Employees
       GoRoute(
         path: '/settings/employees',
@@ -393,6 +413,22 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           templateId: state.pathParameters['id'],
         ),
       ),
+
+      // DEV-ONLY: AdMob bring-up smoke test (AD_SYSTEM Phase A1). Registered in
+      // debug builds only so it can never be reached in a release build.
+      if (kDebugMode)
+        GoRoute(
+          path: '/dev/ads',
+          builder: (context, state) => const AdsDebugScreen(),
+        ),
     ],
   );
+
+  // Wire the AdMob interstitial manager to the router so it can detect the
+  // "closed a detail screen, back on a tab root" natural stop (AD_SYSTEM
+  // Phase A3). The manager self-gates on ad eligibility, so this is inert for
+  // a paid/ineligible shop.
+  ref.read(interstitialAdManagerProvider).attachRouter(router);
+
+  return router;
 });

@@ -2,17 +2,20 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/ads/interstitial_ad_manager.dart';
 import '../../../core/theme/app_tokens.dart';
 import '../../../core/utils/money.dart';
-import '../../../core/utils/pick_image.dart';
 import '../data/order_repository.dart';
 import '../models/order_item.dart';
 import '../state/order_list_notifier.dart';
+import '../widgets/media_picker.dart';
 import '../widgets/order_form_fields.dart';
 import '../widgets/order_item_form_sheet.dart';
 
 import '../../../core/widgets/feedback.dart';
 import '../../../core/widgets/image_viewer.dart';
+import '../../../core/widgets/video_thumbnail.dart';
+import '../../../core/widgets/video_viewer.dart';
 import '../../../core/widgets/section_label.dart';
 /// Create-only. Editing an existing order's details (due date, notes,
 /// priority, discount) and its items happens on [OrderDetailScreen] now that
@@ -132,7 +135,7 @@ class _OrderFormScreenState extends ConsumerState<OrderFormScreen> {
 
   Future<void> _addMedia() async {
     if (_media.length >= 3) return;
-    final file = await pickImageFile(context);
+    final file = await pickOrderMedia(context, ref);
     if (file == null || !mounted) return;
     setState(() => _uploadingMedia = true);
     try {
@@ -181,7 +184,17 @@ class _OrderFormScreenState extends ConsumerState<OrderFormScreen> {
       await ref.read(orderListProvider.notifier).refresh();
       if (mounted) {
         showSuccessSnackbar(context, 'Order created');
+        // Grab the manager before the pop disposes this screen's ref.
+        final interstitial = ref.read(interstitialAdManagerProvider);
         context.pop();
+        // "Task complete" natural stop (AD_SYSTEM A3): offer a capped
+        // interstitial AFTER the pop has settled, so it overlays the
+        // destination (client detail / orders list), never this form or a
+        // receipt. Self-suppresses on caps/eligibility. Post-frame so the
+        // pop's navigation finishes first.
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          interstitial.notifyTaskComplete();
+        });
       }
     } catch (e) {
       if (mounted) showErrorSnackbar(context, e, action: 'Create failed');
@@ -803,7 +816,7 @@ class _MediaStagingStrip extends StatelessWidget {
               children: [
                 GestureDetector(
                   onTap: staged[i].fileType == 'video'
-                      ? null
+                      ? () => showVideoViewer(context, url: staged[i].url)
                       : () => showImageViewer(
                             context,
                             urls: imageUrls,
@@ -812,12 +825,7 @@ class _MediaStagingStrip extends StatelessWidget {
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(8),
                     child: staged[i].fileType == 'video'
-                        ? Container(
-                            color: Theme.of(context)
-                                .colorScheme
-                                .surfaceContainerHighest,
-                            child: const Icon(Icons.play_circle_outline),
-                          )
+                        ? VideoThumbnail(url: staged[i].url)
                         : Image.network(
                             staged[i].url,
                             fit: BoxFit.cover,

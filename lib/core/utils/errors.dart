@@ -26,6 +26,16 @@ String describeError(Object error) {
       case DioExceptionType.badResponse:
         if (status == 404) return "That couldn't be found. It may have been deleted.";
         if (status == 422) return "The server rejected that request.";
+        // 402 = a billing quota / feature gate (proposal §5). The backend's
+        // detail is written for the shop owner — numbered for paid/trial tiers
+        // ("…limit of 300 active orders…") and deliberately numberless for
+        // Starter ("…limit for active orders. Upgrade to add more.", AD_SYSTEM
+        // decision 8). Surface it verbatim rather than a generic code — this is
+        // what makes a plan limit read as a limit, not a bug.
+        if (status == 402) {
+          return serverDetail(error) ??
+              "You've reached your plan's limit. Upgrade to add more.";
+        }
         if (status == 401 || status == 403) return "You're not signed in to do that.";
         if (status != null && status >= 500) {
           return "The server had a problem. Try again in a moment.";

@@ -9,12 +9,15 @@ import '../../../core/utils/pick_image.dart';
 import '../data/order_repository.dart';
 import '../models/fabric.dart';
 import '../models/order_item.dart';
+import 'media_picker.dart';
 import '../models/style_reference.dart';
 import 'measurement_snapshot_picker.dart';
 import 'recipient_picker.dart';
 
 import '../../../core/widgets/feedback.dart';
 import '../../../core/widgets/image_viewer.dart';
+import '../../../core/widgets/video_thumbnail.dart';
+import '../../../core/widgets/video_viewer.dart';
 import '../../../core/widgets/section_label.dart';
 
 /// Common garment types offered as quick-fill chips above the free-text field.
@@ -193,7 +196,7 @@ class _OrderItemFormSheetState extends ConsumerState<OrderItemFormSheet> {
   }
 
   Future<void> _addStyleRef() async {
-    final file = await pickImageFile(context);
+    final file = await pickOrderMedia(context, ref);
     if (file == null || !mounted) return;
     setState(() => _uploadingStyle = true);
     try {
@@ -725,19 +728,31 @@ class _StyleRefsRow extends StatelessWidget {
                   fit: StackFit.expand,
                   children: [
                     GestureDetector(
-                      onTap: () => showImageViewer(
-                        context,
-                        urls: [for (final s in staged) s.url],
-                        initialIndex: i,
-                      ),
+                      onTap: staged[i].fileType == 'video'
+                          ? () => showVideoViewer(context, url: staged[i].url)
+                          : () {
+                              // Gallery is images only — filter videos out so
+                              // the tap index stays aligned to what's shown.
+                              final imageUrls = [
+                                for (final s in staged)
+                                  if (s.fileType != 'video') s.url,
+                              ];
+                              showImageViewer(
+                                context,
+                                urls: imageUrls,
+                                initialIndex: imageUrls.indexOf(staged[i].url),
+                              );
+                            },
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(8),
-                        child: Image.network(
-                          staged[i].url,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) =>
-                              const Icon(Icons.broken_image_outlined),
-                        ),
+                        child: staged[i].fileType == 'video'
+                            ? VideoThumbnail(url: staged[i].url)
+                            : Image.network(
+                                staged[i].url,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) =>
+                                    const Icon(Icons.broken_image_outlined),
+                              ),
                       ),
                     ),
                     Positioned(

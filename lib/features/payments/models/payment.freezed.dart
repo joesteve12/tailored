@@ -47,6 +47,14 @@ mixin _$Payment {
   @JsonKey(name: 'paid_at')
   DateTime get paidAt => throw _privateConstructorUsedError;
 
+  /// When the row was inserted — insertion order, not the (possibly
+  /// back-dated) [paidAt] shown in the timeline. Only the most recently
+  /// inserted entry on an order is deletable, because every later row's
+  /// frozen snapshot counts this one in; the UI uses this to show the delete
+  /// action on that entry alone (see [OrderActivitySection]).
+  @JsonKey(name: 'created_at')
+  DateTime get createdAt => throw _privateConstructorUsedError;
+
   /// Allocated once, per shop, when the row was recorded. Null on payments
   /// that predate the money rebuild.
   @JsonKey(name: 'receipt_number')
@@ -86,6 +94,7 @@ abstract class $PaymentCopyWith<$Res> {
       String? reason,
       String? notes,
       @JsonKey(name: 'paid_at') DateTime paidAt,
+      @JsonKey(name: 'created_at') DateTime createdAt,
       @JsonKey(name: 'receipt_number') String? receiptNumber,
       @JsonKey(
           name: 'order_total_at_payment', fromJson: nullableDecimalToDouble)
@@ -118,6 +127,7 @@ class _$PaymentCopyWithImpl<$Res, $Val extends Payment>
     Object? reason = freezed,
     Object? notes = freezed,
     Object? paidAt = null,
+    Object? createdAt = null,
     Object? receiptNumber = freezed,
     Object? orderTotalAtPayment = freezed,
     Object? amountPaidAfter = freezed,
@@ -159,6 +169,10 @@ class _$PaymentCopyWithImpl<$Res, $Val extends Payment>
           ? _value.paidAt
           : paidAt // ignore: cast_nullable_to_non_nullable
               as DateTime,
+      createdAt: null == createdAt
+          ? _value.createdAt
+          : createdAt // ignore: cast_nullable_to_non_nullable
+              as DateTime,
       receiptNumber: freezed == receiptNumber
           ? _value.receiptNumber
           : receiptNumber // ignore: cast_nullable_to_non_nullable
@@ -193,6 +207,7 @@ abstract class _$$PaymentImplCopyWith<$Res> implements $PaymentCopyWith<$Res> {
       String? reason,
       String? notes,
       @JsonKey(name: 'paid_at') DateTime paidAt,
+      @JsonKey(name: 'created_at') DateTime createdAt,
       @JsonKey(name: 'receipt_number') String? receiptNumber,
       @JsonKey(
           name: 'order_total_at_payment', fromJson: nullableDecimalToDouble)
@@ -223,6 +238,7 @@ class __$$PaymentImplCopyWithImpl<$Res>
     Object? reason = freezed,
     Object? notes = freezed,
     Object? paidAt = null,
+    Object? createdAt = null,
     Object? receiptNumber = freezed,
     Object? orderTotalAtPayment = freezed,
     Object? amountPaidAfter = freezed,
@@ -264,6 +280,10 @@ class __$$PaymentImplCopyWithImpl<$Res>
           ? _value.paidAt
           : paidAt // ignore: cast_nullable_to_non_nullable
               as DateTime,
+      createdAt: null == createdAt
+          ? _value.createdAt
+          : createdAt // ignore: cast_nullable_to_non_nullable
+              as DateTime,
       receiptNumber: freezed == receiptNumber
           ? _value.receiptNumber
           : receiptNumber // ignore: cast_nullable_to_non_nullable
@@ -294,6 +314,7 @@ class _$PaymentImpl extends _Payment {
       this.reason,
       this.notes,
       @JsonKey(name: 'paid_at') required this.paidAt,
+      @JsonKey(name: 'created_at') required this.createdAt,
       @JsonKey(name: 'receipt_number') this.receiptNumber,
       @JsonKey(
           name: 'order_total_at_payment', fromJson: nullableDecimalToDouble)
@@ -342,6 +363,15 @@ class _$PaymentImpl extends _Payment {
   @JsonKey(name: 'paid_at')
   final DateTime paidAt;
 
+  /// When the row was inserted — insertion order, not the (possibly
+  /// back-dated) [paidAt] shown in the timeline. Only the most recently
+  /// inserted entry on an order is deletable, because every later row's
+  /// frozen snapshot counts this one in; the UI uses this to show the delete
+  /// action on that entry alone (see [OrderActivitySection]).
+  @override
+  @JsonKey(name: 'created_at')
+  final DateTime createdAt;
+
   /// Allocated once, per shop, when the row was recorded. Null on payments
   /// that predate the money rebuild.
   @override
@@ -361,7 +391,7 @@ class _$PaymentImpl extends _Payment {
 
   @override
   String toString() {
-    return 'Payment(id: $id, orderId: $orderId, kind: $kind, amount: $amount, tipAmount: $tipAmount, method: $method, reason: $reason, notes: $notes, paidAt: $paidAt, receiptNumber: $receiptNumber, orderTotalAtPayment: $orderTotalAtPayment, amountPaidAfter: $amountPaidAfter)';
+    return 'Payment(id: $id, orderId: $orderId, kind: $kind, amount: $amount, tipAmount: $tipAmount, method: $method, reason: $reason, notes: $notes, paidAt: $paidAt, createdAt: $createdAt, receiptNumber: $receiptNumber, orderTotalAtPayment: $orderTotalAtPayment, amountPaidAfter: $amountPaidAfter)';
   }
 
   @override
@@ -379,6 +409,8 @@ class _$PaymentImpl extends _Payment {
             (identical(other.reason, reason) || other.reason == reason) &&
             (identical(other.notes, notes) || other.notes == notes) &&
             (identical(other.paidAt, paidAt) || other.paidAt == paidAt) &&
+            (identical(other.createdAt, createdAt) ||
+                other.createdAt == createdAt) &&
             (identical(other.receiptNumber, receiptNumber) ||
                 other.receiptNumber == receiptNumber) &&
             (identical(other.orderTotalAtPayment, orderTotalAtPayment) ||
@@ -400,6 +432,7 @@ class _$PaymentImpl extends _Payment {
       reason,
       notes,
       paidAt,
+      createdAt,
       receiptNumber,
       orderTotalAtPayment,
       amountPaidAfter);
@@ -432,6 +465,7 @@ abstract class _Payment extends Payment {
       final String? reason,
       final String? notes,
       @JsonKey(name: 'paid_at') required final DateTime paidAt,
+      @JsonKey(name: 'created_at') required final DateTime createdAt,
       @JsonKey(name: 'receipt_number') final String? receiptNumber,
       @JsonKey(
           name: 'order_total_at_payment', fromJson: nullableDecimalToDouble)
@@ -477,6 +511,15 @@ abstract class _Payment extends Payment {
   @override
   @JsonKey(name: 'paid_at')
   DateTime get paidAt;
+
+  /// When the row was inserted — insertion order, not the (possibly
+  /// back-dated) [paidAt] shown in the timeline. Only the most recently
+  /// inserted entry on an order is deletable, because every later row's
+  /// frozen snapshot counts this one in; the UI uses this to show the delete
+  /// action on that entry alone (see [OrderActivitySection]).
+  @override
+  @JsonKey(name: 'created_at')
+  DateTime get createdAt;
 
   /// Allocated once, per shop, when the row was recorded. Null on payments
   /// that predate the money rebuild.

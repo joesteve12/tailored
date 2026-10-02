@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -8,6 +9,8 @@ import '../../../core/theme/theme_mode_provider.dart';
 import '../../../core/utils/money.dart';
 import '../../../core/widgets/skeleton.dart';
 import '../../home/state/home_dashboard_providers.dart';
+import '../../promotions/state/promotion_providers.dart';
+import '../../promotions/widgets/promo_slot.dart';
 
 /// The "More" tab — the shop's hub for everything that isn't one of the four
 /// primary flows (Home / Orders / Tasks / Customers). Renamed in the bottom
@@ -35,6 +38,7 @@ const Color _catAmber = Color(0xFFD97706); // Fabric inventory
 const Color _catTeal = Color(0xFF0D9488); // Measurement fields
 const Color _catViolet = Color(0xFF7C3AED); // Templates
 const Color _catIndigo = Color(0xFF4F46E5); // Production processes
+const Color _catRose = Color(0xFFBE185D); // Plan & billing
 
 // Bumped alongside pubspec `version:` — shown in the footer.
 const String _appVersion = '0.1.0';
@@ -130,6 +134,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         color: _catIndigo,
         onTap: () => context.push('/settings/processes'),
       ),
+      _Dest(
+        title: 'Plan & billing',
+        subtitle: 'Your plan, usage, and payments',
+        icon: Icons.workspace_premium_outlined,
+        color: _catRose,
+        onTap: () => context.push('/settings/plan'),
+      ),
     ];
 
     return Scaffold(
@@ -165,15 +176,36 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       const _GroupLabel('Configuration'),
       _Group([destinations[3], destinations[4], destinations[5]]),
       const SizedBox(height: 20),
+      const _GroupLabel('Billing'),
+      _Group([destinations[6]]),
+      const SizedBox(height: 20),
+      // House-promo slot on a calm, non-time-pressured surface (proposal §5
+      // `more_tab_card`). The padding applies only when a campaign renders, so
+      // an empty slot leaves this layout byte-for-byte unchanged.
+      const PromoSlot(
+        placement: kMoreTabPlacement,
+        padding: EdgeInsets.only(bottom: 20),
+      ),
       const _GroupLabel('Preferences'),
       const _ThemeCard(),
       const SizedBox(height: 20),
       const _GroupLabel('Account'),
       const _LogoutCard(),
       const SizedBox(height: 20),
+      // DEV-ONLY: a discreet entry to the AdMob bring-up smoke test
+      // (AD_SYSTEM Phase A1). Compiled out of release builds by kDebugMode,
+      // matching the debug-only `/dev/ads` route registration.
+      if (kDebugMode) ...[
+        ListTile(
+          leading: const Icon(Icons.bug_report_outlined),
+          title: const Text('Ads debug (dev)'),
+          onTap: () => context.push('/dev/ads'),
+        ),
+        const SizedBox(height: 20),
+      ],
       Center(
         child: Text(
-          'Tailored · v$_appVersion',
+          'Dinkee · v$_appVersion',
           style: TextStyle(
             fontSize: 11,
             color: context.appTokens.mutedForeground,

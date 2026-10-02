@@ -2,12 +2,20 @@
   "version": "0.2.0",
   "configurations": [
     {
+      // AD_TEST_DEVICE_ID (AD_SYSTEM Phase A1) registers this device with
+      // AdMob so even the REAL banner unit
+      // (ca-app-pub-6157645724547288/2328707443) serves test creatives here —
+      // lets you verify the real unit without risking invalid-traffic strikes.
+      // Get the hash from logcat the first time you run with it blank (look
+      // for "setTestDeviceIds(Arrays.asList(...)" after loading a test ad on
+      // the Ads debug screen), then paste it in below.
       "name": "tailored (Android emulator → local backend)",
       "request": "launch",
       "type": "dart",
       "program": "lib/main.dart",
       "toolArgs": [
-        "--dart-define=API_BASE_URL=http://10.0.2.2:8001/api/v1"
+        "--dart-define=API_BASE_URL=http://10.0.2.2:8000/api/v1",
+        "--dart-define=AD_TEST_DEVICE_ID=834884638E2B797925406F7CA059FECF"
       ]
     },
     {
@@ -16,7 +24,8 @@
       "type": "dart",
       "program": "lib/main.dart",
       "toolArgs": [
-        "--dart-define=API_BASE_URL=https://tailored-backend-5yxa.onrender.com/api/v1"
+        "--dart-define=API_BASE_URL=https://tailored-backend-5yxa.onrender.com/api/v1",
+        "--dart-define=AD_TEST_DEVICE_ID=834884638E2B797925406F7CA059FECF"
       ]
     },
     {
@@ -25,7 +34,8 @@
       "type": "dart",
       "program": "lib/main.dart",
       "toolArgs": [
-        "--dart-define=API_BASE_URL=http://127.0.0.1:8001/api/v1"
+        "--dart-define=API_BASE_URL=http://127.0.0.1:8000/api/v1",
+        "--dart-define=AD_TEST_DEVICE_ID=834884638E2B797925406F7CA059FECF"
       ]
     },
 
@@ -34,7 +44,10 @@
       "request": "launch",
       "type": "dart",
       "program": "lib/main.dart",
-      "flutterMode": "profile"
+      "flutterMode": "profile",
+      "toolArgs": [
+        "--dart-define=AD_TEST_DEVICE_ID=834884638E2B797925406F7CA059FECF"
+      ]
     }
   ]
 }

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -13,6 +14,14 @@ import '../../../core/widgets/async_error_view.dart';
 import '../../../core/widgets/skeleton.dart';
 import '../state/order_list_notifier.dart';
 import '../state/order_list_state.dart';
+import '../../billing/models/entitlements.dart';
+import '../../billing/state/entitlements_notifier.dart';
+import '../../billing/widgets/upgrade_prompt.dart';
+import '../../promotions/state/promotion_providers.dart';
+import '../../promotions/util/in_list_promo.dart';
+import '../../promotions/widgets/promo_slot.dart';
+import '../../../core/ads/native_ad_card.dart';
+import '../../../core/ads/native_ad_in_list.dart';
 import '../widgets/client_picker_sheet.dart';
 import '../widgets/order_card.dart';
 
@@ -141,22 +150,88 @@ class _OrderListScreenState extends ConsumerState<OrderListScreen> {
               onRefresh: () => ref.read(orderListProvider.notifier).refresh(),
             );
           }
+          // Two mutually-exclusive house-promo surfaces on Orders — at most one
+          // per screen (§7). An `in_list_card` campaign configured for the
+          // Orders list injects one card mid-feed (at its configured interval)
+          // and, when it does, SUPPRESSES the footer. Otherwise the
+          // `orders_list_footer` campaign renders after the fully-loaded list —
+          // never while more is still paging in. Each renders nothing unless a
+          // campaign actually targets this shop for that slot (H5).
+          final dismissed = ref.watch(dismissedPromotionsProvider);
+          final inListPromo =
+              ref.watch(promotionProvider(kInListPlacement)).valueOrNull;
+          final promoPlan = resolveInListPlan(
+            promo: inListPromo,
+            dismissed: dismissed,
+            thisList: 'orders',
+            contentCount: state.items.length,
+          );
+          final showFooter = !state.hasMore && !promoPlan.injected;
+          // Whether a house footer campaign will actually render on this screen
+          // (mirrors PromoSlot's own render decision). The AdMob native card
+          // must yield to it — house > AdMob (LOCKED decision 9) — so it's part
+          // of the native suppression below, not just the in-list card.
+          final footerPromo =
+              ref.watch(promotionProvider(kOrdersFooterPlacement)).valueOrNull;
+          final footerWillRender = footerPromo != null &&
+              footerPromo.isRenderable &&
+              !dismissed.contains(footerPromo.campaignId);
+          // One AdMob native card injected mid-feed (A4) — only when NO house
+          // promo owns this screen (neither the in-list card nor the footer) and
+          // the shop is ad-eligible on a non-web build. Fails closed otherwise,
+          // so no phantom row is added.
+          final nativePlan = NativeAdInListPlan(
+            contentCount: state.items.length,
+            enabled: ref.watch(adsEnabledProvider) &&
+                !kIsWeb &&
+                !promoPlan.injected &&
+                !footerWillRender,
+          );
+          // The single mid-feed slot is EITHER the house in-list card OR the
+          // AdMob native card, never both (native yields above), so one shift
+          // governs the index mapping.
+          final inlineInjected = promoPlan.injected || nativePlan.injected;
+          final inlineAt =
+              promoPlan.injected ? promoPlan.injectAt : nativePlan.injectAt;
+          int inlineContentIndex(int i) =>
+              inlineInjected && i > inlineAt ? i - 1 : i;
           return RefreshIndicator(
             onRefresh: () => ref.read(orderListProvider.notifier).refresh(),
             child: ListView.builder(
               controller: _scrollController,
               physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.fromLTRB(12, 12, 12, 96),
-              itemCount: state.items.length + (state.hasMore ? 1 : 0),
+              itemCount: state.items.length +
+                  (state.hasMore ? 1 : 0) +
+                  (inlineInjected ? 1 : 0) +
+                  (showFooter ? 1 : 0),
               itemBuilder: (context, index) {
-                if (index >= state.items.length) {
+                if (inlineInjected && index == inlineAt) {
+                  return promoPlan.injected
+                      ? const PromoSlot(
+                          placement: kInListPlacement,
+                          padding: EdgeInsets.symmetric(vertical: 4),
+                        )
+                      : const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 4),
+                          child: NativeAdCard(),
+                        );
+                }
+                final itemIndex = inlineContentIndex(index);
+                if (showFooter && itemIndex == state.items.length) {
+                  return const PromoSlot(
+                    placement: kOrdersFooterPlacement,
+                    padding: EdgeInsets.only(top: 8),
+                  );
+                }
+                if (itemIndex >= state.items.length) {
                   return const Padding(
                     padding: EdgeInsets.symmetric(vertical: 20),
                     child: Center(child: CircularProgressIndicator()),
                   );
                 }
 
-                final order = state.items[index];
+                final order = state.items[itemIndex];
                 return OrderCard(
                   orderNumber: order.orderNumber,
                   subtitle: order.clientName,
@@ -182,6 +257,11 @@ class _OrderListScreenState extends ConsumerState<OrderListScreen> {
   }
 
   Future<void> _pickClientAndCreateOrder(BuildContext context) async {
+    // Plan gate (UX only): if the shop is at its active-order cap, prompt to
+    // upgrade before even picking a client. The backend 402 remains the real
+    // limit; this just avoids walking the shop into a dead end.
+    if (!await guardCreate(context, ref, QuotaDimension.activeOrders)) return;
+    if (!context.mounted) return;
     final clientId = await showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
@@ -684,6 +764,15 @@ class _EmptyState extends StatelessWidget {
               ),
             ),
           ),
+          // Onboarding/education slot for a brand-new shop (proposal §5
+          // `empty_state`) — only on a genuinely empty list, never a
+          // "nothing matched your filter" one. Renders nothing unless a
+          // campaign targets this shop.
+          if (!isFiltered)
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 0, 16, 24),
+              child: PromoSlot(placement: kEmptyStatePlacement),
+            ),
         ],
       ),
     );

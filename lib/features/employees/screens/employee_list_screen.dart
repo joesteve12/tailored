@@ -4,6 +4,8 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/widgets/async_error_view.dart';
 import '../../../core/widgets/skeleton.dart';
+import '../../billing/models/entitlements.dart';
+import '../../billing/widgets/upgrade_prompt.dart';
 import '../state/employee_list_notifier.dart';
 
 class EmployeeListScreen extends ConsumerWidget {
@@ -90,7 +92,12 @@ class EmployeeListScreen extends ConsumerWidget {
       ),
       floatingActionButton: FloatingActionButton(
         heroTag: 'fab_employees',
-        onPressed: () => context.push('/settings/employees/new'),
+        // Plan gate (UX only): Starter includes one employee — prompt to
+        // upgrade at the cap rather than opening the form to a certain 402.
+        onPressed: () async {
+          if (!await guardCreate(context, ref, QuotaDimension.employees)) return;
+          if (context.mounted) context.push('/settings/employees/new');
+        },
         child: const Icon(Icons.add),
       ),
     );

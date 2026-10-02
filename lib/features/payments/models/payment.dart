@@ -56,6 +56,13 @@ class Payment with _$Payment {
     String? notes,
     @JsonKey(name: 'paid_at') required DateTime paidAt,
 
+    /// When the row was inserted — insertion order, not the (possibly
+    /// back-dated) [paidAt] shown in the timeline. Only the most recently
+    /// inserted entry on an order is deletable, because every later row's
+    /// frozen snapshot counts this one in; the UI uses this to show the delete
+    /// action on that entry alone (see [OrderActivitySection]).
+    @JsonKey(name: 'created_at') required DateTime createdAt,
+
     /// Allocated once, per shop, when the row was recorded. Null on payments
     /// that predate the money rebuild.
     @JsonKey(name: 'receipt_number') String? receiptNumber,

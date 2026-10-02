@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/ads/interstitial_ad_manager.dart';
 import '../data/client_repository.dart';
 import '../state/client_detail_notifier.dart';
 import '../state/client_list_notifier.dart';
@@ -107,7 +108,16 @@ class _ClientFormScreenState extends ConsumerState<ClientFormScreen> {
           context,
           widget.isEditing ? 'Client updated' : 'Client created',
         );
+        final wasCreate = !widget.isEditing;
+        final interstitial = ref.read(interstitialAdManagerProvider);
         context.pop();
+        // "Task complete" natural stop (AD_SYSTEM A3), create only. Fires after
+        // the pop settles so it overlays the list/detail, never this form.
+        if (wasCreate) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            interstitial.notifyTaskComplete();
+          });
+        }
       }
     } catch (e) {
       if (mounted) {

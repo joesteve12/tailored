@@ -1,9 +1,18 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../models/client.dart';
 import '../state/client_list_notifier.dart';
+import '../../billing/models/entitlements.dart';
+import '../../billing/state/entitlements_notifier.dart';
+import '../../billing/widgets/upgrade_prompt.dart';
+import '../../promotions/state/promotion_providers.dart';
+import '../../promotions/util/in_list_promo.dart';
+import '../../promotions/widgets/promo_slot.dart';
+import '../../../core/ads/native_ad_card.dart';
+import '../../../core/ads/native_ad_in_list.dart';
 import '../../../core/auth/auth_state.dart';
 import '../../../core/auth/models/user.dart';
 import '../../../core/utils/hero_tags.dart';
@@ -114,6 +123,31 @@ class _ClientListScreenState extends ConsumerState<ClientListScreen> {
                     ),
                   );
                 }
+                // One in-list house promo injected into a long-enough list
+                // (proposal §5/§7 `in_list_card`) — never on a short list, and
+                // at most one per screen. Driven by the resolved campaign: it
+                // injects only when a campaign targets THIS list ('clients'),
+                // at the campaign's configured interval, and adds no phantom row
+                // otherwise (H5).
+                final inListPromo =
+                    ref.watch(promotionProvider(kInListPlacement)).valueOrNull;
+                final promoPlan = resolveInListPlan(
+                  promo: inListPromo,
+                  dismissed: ref.watch(dismissedPromotionsProvider),
+                  thisList: 'clients',
+                  contentCount: state.items.length,
+                );
+                // One AdMob native card injected into a long-enough Customers
+                // list (A4) — but only when NO house promo already owns this
+                // screen (house > AdMob, LOCKED decision 9): disabled whenever
+                // the house in-list card injects here. It also fails closed on
+                // web / ineligible shops, so no phantom row is added there.
+                final nativePlan = NativeAdInListPlan(
+                  contentCount: state.items.length,
+                  enabled: ref.watch(adsEnabledProvider) &&
+                      !kIsWeb &&
+                      !promoPlan.injected,
+                );
                 return RefreshIndicator(
                   onRefresh: () =>
                       ref.read(clientListProvider.notifier).refresh(),
@@ -121,16 +155,37 @@ class _ClientListScreenState extends ConsumerState<ClientListScreen> {
                     controller: _scrollController,
                     physics: const AlwaysScrollableScrollPhysics(),
                     padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
-                    itemCount: state.items.length + (state.hasMore ? 1 : 0),
+                    itemCount: state.items.length +
+                        (state.hasMore ? 1 : 0) +
+                        promoPlan.extraCount +
+                        nativePlan.extraCount,
                     itemBuilder: (context, index) {
-                      if (index >= state.items.length) {
+                      if (promoPlan.isPromoAt(index)) {
+                        return const PromoSlot(
+                          placement: kInListPlacement,
+                          padding: EdgeInsets.symmetric(vertical: 4),
+                        );
+                      }
+                      if (nativePlan.isPromoAt(index)) {
+                        return const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 4),
+                          child: NativeAdCard(),
+                        );
+                      }
+                      // Exactly one of the two plans injects (native is off when
+                      // the house card is on), so a single contentIndex applies.
+                      final itemIndex = promoPlan.injected
+                          ? promoPlan.contentIndex(index)
+                          : nativePlan.contentIndex(index);
+
+                      if (itemIndex >= state.items.length) {
                         return const Padding(
                           padding: EdgeInsets.all(16),
                           child: Center(child: CircularProgressIndicator()),
                         );
                       }
 
-                      final client = state.items[index];
+                      final client = state.items[itemIndex];
                       return _ClientListRow(
                         client: client,
                         // `extra: client` is load-bearing, not a shortcut.
@@ -154,7 +209,12 @@ class _ClientListScreenState extends ConsumerState<ClientListScreen> {
       ),
       floatingActionButton: FloatingActionButton(
         heroTag: 'fab_clients',
-        onPressed: () => context.push('/clients/new'),
+        // Plan gate (UX only — the backend 402 is the real limit): if the shop
+        // is at its client cap, prompt to upgrade instead of opening the form.
+        onPressed: () async {
+          if (!await guardCreate(context, ref, QuotaDimension.clients)) return;
+          if (context.mounted) context.push('/clients/new');
+        },
         child: const Icon(Icons.add),
       ),
     );

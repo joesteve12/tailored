@@ -11,9 +11,24 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
 
     <application
-        android:label="tailored"
+        android:label="Dinkee"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
+
+        <!-- AdMob App ID (AD_SYSTEM Phase A1 — see ADMOB_INTEGRATION.md).
+             The google_mobile_ads SDK requires this meta-data or MainActivity
+             crashes on start.
+
+             This is the REAL Dinkee AdMob App ID. It is not secret (App IDs ship
+             in every APK). The App ID is the same in debug and release; what
+             splits by build mode is the ad-UNIT IDs (lib/core/ads/ad_config.dart:
+             Google test units in debug, real units in release) plus test-device
+             registration — so you never serve real creatives to your own device.
+             Never tap your own live ads: that's invalid traffic and bans the
+             account. -->
+        <meta-data
+            android:name="com.google.android.gms.ads.APPLICATION_ID"
+            android:value="ca-app-pub-6157645724547288~9277364377"/>
 
         <receiver android:exported="false"
             android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver" />

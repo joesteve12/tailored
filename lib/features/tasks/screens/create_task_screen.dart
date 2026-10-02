@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/ads/interstitial_ad_manager.dart';
 import '../../employees/models/employee.dart';
 import '../../orders/state/order_detail_notifier.dart';
 import '../models/production_process.dart';
@@ -111,9 +112,16 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
         ],
       );
       if (mounted) {
+        final interstitial = ref.read(interstitialAdManagerProvider);
         // Replace, not push: back from the new task should land on the
         // order, not on a spent create form.
         context.pushReplacement(taskDetailPath(detail.id));
+        // "Task complete" natural stop (AD_SYSTEM A3): offer a capped
+        // interstitial after landing on the new task's detail. Post-frame so
+        // the navigation settles; self-suppresses on caps/eligibility.
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          interstitial.notifyTaskComplete();
+        });
       }
     } catch (e) {
       if (mounted) {

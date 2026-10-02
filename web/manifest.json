@@ -1,6 +1,6 @@
 {
-    "name": "tailored_business_app",
-    "short_name": "tailored_business_app",
+    "name": "Dinkee",
+    "short_name": "Dinkee",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

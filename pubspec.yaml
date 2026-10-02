@@ -1,5 +1,5 @@
 name: tailored_business_app
-description: "Tailored — Business App (tailor shop management)"
+description: "Dinkee — Business App (tailor shop management)"
 publish_to: 'none'
 version: 0.1.0+1
 
@@ -57,6 +57,21 @@ dependencies:
   # and feed markers from the cached per-month event map.
   table_calendar: ^3.1.2
   fl_chart: ^1.2.0
+  # New for Phase 6 (Billing UX): the in-app Paystack checkout is an embedded
+  # WebView over the hosted-checkout authorization_url (decided over the alpha
+  # Paystack Flutter SDK / external browser). 4.x satisfies the Dart 3.6 floor and
+  # registers the Android/iOS platform implementations transitively.
+  webview_flutter: ^4.7.0
+  video_player: ^2.10.1
+  # New for the AdMob side-revenue system (AD_SYSTEM Phase A1 — see
+  # ADMOB_INTEGRATION.md). The official Google Mobile Ads SDK, rendered ONLY to
+  # ad-eligible shops (Starter plan or trialing status), server-gated via
+  # `adsEnabledProvider` which fails CLOSED. This package also bundles the User
+  # Messaging Platform (UMP) consent classes (ConsentInformation / ConsentForm)
+  # we gather consent with BEFORE initialising the SDK — no separate consent
+  # dependency. NOTE: no Flutter *web* support; the web build shows no ads.
+  # Android-first (iOS when shipped).
+  google_mobile_ads: ^7.0.0
 
 dev_dependencies:
   flutter_test:

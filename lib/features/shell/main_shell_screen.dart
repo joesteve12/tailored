@@ -2,6 +2,8 @@ import 'package:canonical_adaptive_scaffold/canonical_adaptive_scaffold.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/ads/anchored_banner_ad.dart';
+
 // Navigation chrome swaps at the Material 3 "md" window-size class — 840px, per
 // the "breakpoints" section of tokens.json (sm 600 / md 840 / lg 1200). Below
 // md the shell shows a bottom NavigationBar; at md and above it shows a vertical
@@ -63,8 +65,13 @@ class MainShell extends StatelessWidget {
       extraLargeBreakpoint: _never,
       // Same content at every size — the branch shell (an IndexedStack over the
       // five tabs) is unchanged; only the navigation chrome around it adapts.
-      smallBody: (_) => navigationShell,
-      body: (_) => navigationShell,
+      // The anchored banner (AD_SYSTEM Phase A2) rides along at the bottom of
+      // this same body column at every breakpoint: above the bottom
+      // NavigationBar on small layouts, at the foot of the body on
+      // NavigationRail layouts. It collapses to nothing for an ineligible
+      // shop, so this is a no-op wrapper until then.
+      smallBody: (_) => _ShellBody(navigationShell: navigationShell),
+      body: (_) => _ShellBody(navigationShell: navigationShell),
       destinations: const [
         NavigationDestination(
           icon: Icon(Icons.home_outlined),
@@ -97,6 +104,26 @@ class MainShell extends StatelessWidget {
           selectedIcon: Icon(Icons.more_horiz),
           label: 'More',
         ),
+      ],
+    );
+  }
+}
+
+/// Wraps a branch's content with the anchored banner pinned to the bottom of
+/// the body column (AD_SYSTEM Phase A2). [AnchoredBannerAd] renders
+/// `SizedBox.shrink()` for an ineligible/paid shop, so this is a plain
+/// pass-through of [navigationShell] until a shop is ad-eligible.
+class _ShellBody extends StatelessWidget {
+  const _ShellBody({required this.navigationShell});
+
+  final StatefulNavigationShell navigationShell;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Expanded(child: navigationShell),
+        const AnchoredBannerAd(),
       ],
     );
   }

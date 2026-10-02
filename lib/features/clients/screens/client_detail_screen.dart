@@ -9,6 +9,8 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../billing/models/entitlements.dart';
+import '../../billing/widgets/upgrade_prompt.dart';
 import '../../measurements/models/recipient_ref.dart';
 import '../../measurements/widgets/measurement_list_section.dart';
 import '../../orders/state/client_orders_providers.dart';
@@ -294,8 +296,17 @@ class _ClientDetailScreenState extends ConsumerState<ClientDetailScreen> {
       floatingActionButton: client == null
           ? null
           : FloatingActionButton.extended(
-              onPressed: () =>
-                  context.push('/orders/new', extra: widget.clientId),
+              // Plan gate (UX only): prompt to upgrade at the active-order cap
+              // instead of opening the order form to a certain 402.
+              onPressed: () async {
+                if (!await guardCreate(
+                    context, ref, QuotaDimension.activeOrders)) {
+                  return;
+                }
+                if (context.mounted) {
+                  context.push('/orders/new', extra: widget.clientId);
+                }
+              },
               icon: const Icon(Icons.add),
               label: const Text('New order'),
             ),

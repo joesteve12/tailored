@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/ads/interstitial_ad_manager.dart';
 import '../data/guest_repository.dart';
 import '../state/guest_detail_notifier.dart';
 import '../state/guest_list_notifier.dart';
@@ -86,7 +87,15 @@ class _GuestFormScreenState extends ConsumerState<GuestFormScreen> {
           context,
           widget.isEditing ? 'Guest updated' : 'Guest added',
         );
+        final wasCreate = !widget.isEditing;
+        final interstitial = ref.read(interstitialAdManagerProvider);
         context.pop();
+        // "Task complete" natural stop (AD_SYSTEM A3), create only.
+        if (wasCreate) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            interstitial.notifyTaskComplete();
+          });
+        }
       }
     } catch (e) {
       if (mounted) {

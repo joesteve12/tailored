@@ -25,7 +25,11 @@ android {
         applicationId = "com.tailored.business.tailored"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
+        // AD_SYSTEM Phase A1: google_mobile_ads 7.x (Google Mobile Ads SDK)
+        // requires Android API 23+. Flutter's default floor is lower, so raise
+        // it here or the manifest merge fails with a minSdkVersion conflict.
+        // Kept as max(23, Flutter default) so a future Flutter bump still wins.
+        minSdk = maxOf(23, flutter.minSdkVersion)
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName

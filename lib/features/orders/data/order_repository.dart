@@ -19,6 +19,18 @@ import '../models/status_event.dart';
 /// boilerplate for a transport-only shape.
 typedef StagedUpload = ({String url, String fileId, String fileType});
 
+/// Timeouts for multipart uploads. The Dio default (15s receive) is right for
+/// JSON but far too short for media: a trimmed video is up to 20MB, and on a
+/// slow mobile link plus the backend's ImageKit round-trip a 15s window is
+/// easily blown — which surfaced as a spurious "connection timeout" in the app
+/// even though the upload had actually succeeded (backend logged 201). Every
+/// multipart upload uses this generous window instead; normal API calls keep
+/// the tight default so a real hang still fails fast.
+final Options _uploadOptions = Options(
+  sendTimeout: const Duration(minutes: 3),
+  receiveTimeout: const Duration(minutes: 3),
+);
+
 /// Formats a DateTime as "YYYY-MM-DD" for any `due_date` sent in a body.
 /// The backend types due_date as a Pydantic `date`; a full ISO datetime
 /// string (`DateTime.toIso8601String()`) is rejected by
@@ -275,6 +287,7 @@ class OrderRepository {
       queryParameters: {
         if (notes != null && notes.isNotEmpty) 'notes': notes,
       },
+      options: _uploadOptions,
     );
     return OrderMedia.fromJson(response.data as Map<String, dynamic>);
   }
@@ -411,6 +424,7 @@ class OrderRepository {
     final response = await _dio.post(
       '/uploads/fabrics/$fabricId/image',
       data: formData,
+      options: _uploadOptions,
     );
     return (response.data as Map<String, dynamic>)['url'] as String;
   }
@@ -440,6 +454,7 @@ class OrderRepository {
       queryParameters: {
         if (notes != null && notes.isNotEmpty) 'notes': notes,
       },
+      options: _uploadOptions,
     );
   }
 
@@ -467,6 +482,7 @@ class OrderRepository {
       '/uploads/staging/image',
       data: formData,
       queryParameters: {'folder': folder},
+      options: _uploadOptions,
     );
     final data = response.data as Map<String, dynamic>;
     return (
@@ -490,6 +506,7 @@ class OrderRepository {
       '/uploads/staging/media',
       data: formData,
       queryParameters: {'folder': folder},
+      options: _uploadOptions,
     );
     final data = response.data as Map<String, dynamic>;
     return (

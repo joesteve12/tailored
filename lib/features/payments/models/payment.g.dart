@@ -19,6 +19,7 @@ _$PaymentImpl _$$PaymentImplFromJson(Map<String, dynamic> json) =>
       reason: json['reason'] as String?,
       notes: json['notes'] as String?,
       paidAt: DateTime.parse(json['paid_at'] as String),
+      createdAt: DateTime.parse(json['created_at'] as String),
       receiptNumber: json['receipt_number'] as String?,
       orderTotalAtPayment:
           nullableDecimalToDouble(json['order_total_at_payment']),
@@ -36,6 +37,7 @@ Map<String, dynamic> _$$PaymentImplToJson(_$PaymentImpl instance) =>
       'reason': instance.reason,
       'notes': instance.notes,
       'paid_at': instance.paidAt.toIso8601String(),
+      'created_at': instance.createdAt.toIso8601String(),
       'receipt_number': instance.receiptNumber,
       'order_total_at_payment': instance.orderTotalAtPayment,
       'amount_paid_after': instance.amountPaidAfter,

@@ -27,6 +27,8 @@ import '../widgets/measurement_snapshot_section.dart';
 
 import '../../../core/widgets/feedback.dart';
 import '../../../core/widgets/image_viewer.dart';
+import '../../../core/widgets/video_thumbnail.dart';
+import '../../../core/widgets/video_viewer.dart';
 
 /// The order's home screen, brought to parity with the restructured backend.
 /// Beyond the old due-date/notes/payment view it now drives: the order-level
@@ -1479,7 +1481,7 @@ class _StyleRefThumbs extends StatelessWidget {
         for (final ref_ in item.styleReferences)
           GestureDetector(
             onTap: ref_.fileType == 'video'
-                ? null
+                ? () => showVideoViewer(context, url: ref_.fileUrl)
                 : () => showImageViewer(
                       context,
                       urls: imageUrls,
@@ -1488,12 +1490,10 @@ class _StyleRefThumbs extends StatelessWidget {
             child: ClipRRect(
               borderRadius: BorderRadius.circular(6),
               child: ref_.fileType == 'video'
-                  ? Container(
+                  ? SizedBox(
                       width: 44,
                       height: 44,
-                      color:
-                          Theme.of(context).colorScheme.surfaceContainerHighest,
-                      child: const Icon(Icons.play_circle_outline, size: 20),
+                      child: VideoThumbnail(url: ref_.fileUrl, badgeSize: 18),
                     )
                   : Image.network(
                       ref_.fileUrl,

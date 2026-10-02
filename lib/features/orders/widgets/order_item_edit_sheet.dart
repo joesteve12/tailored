@@ -8,12 +8,15 @@ import '../../../core/utils/money.dart';
 import '../../../core/utils/pick_image.dart';
 import '../../../core/widgets/feedback.dart';
 import '../../../core/widgets/image_viewer.dart';
+import '../../../core/widgets/video_thumbnail.dart';
+import '../../../core/widgets/video_viewer.dart';
 import '../models/fabric.dart';
 import '../models/order.dart';
 import '../models/order_item.dart';
 import '../models/style_reference.dart';
 import '../state/order_detail_notifier.dart';
 import 'measurement_snapshot_picker.dart';
+import 'media_picker.dart';
 import 'recipient_picker.dart';
 
 /// Edit sheet for an item that already exists on a saved order — the
@@ -147,7 +150,7 @@ class _OrderItemEditSheetState extends ConsumerState<OrderItemEditSheet> {
   }
 
   Future<void> _addStyleRef() async {
-    final file = await pickImageFile(context);
+    final file = await pickOrderMedia(context, ref);
     if (file == null || !mounted) return;
     setState(() => _busyStyle = true);
     try {
@@ -849,7 +852,8 @@ class _StyleRefsRow extends StatelessWidget {
                       children: [
                         GestureDetector(
                           onTap: ref_.fileType == 'video'
-                              ? null
+                              ? () => showVideoViewer(context,
+                                  url: ref_.fileUrl)
                               : () => showImageViewer(
                                     context,
                                     urls: imageUrls,
@@ -859,13 +863,7 @@ class _StyleRefsRow extends StatelessWidget {
                           child: ClipRRect(
                             borderRadius: BorderRadius.circular(8),
                             child: ref_.fileType == 'video'
-                                ? Container(
-                                    color: Theme.of(context)
-                                        .colorScheme
-                                        .surfaceContainerHighest,
-                                    child:
-                                        const Icon(Icons.play_circle_outline),
-                                  )
+                                ? VideoThumbnail(url: ref_.fileUrl)
                                 : Image.network(
                                     ref_.fileUrl,
                                     fit: BoxFit.cover,

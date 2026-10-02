@@ -33,18 +33,33 @@ Future<void> showImageViewer(
   bool zoomable = true,
 }) {
   if (urls.isEmpty) return Future.value();
-  return showDialog<void>(
+  return showGeneralDialog<void>(
     context: context,
     // Near-opaque so the underlying screen visually recedes; still transparent
     // enough that the OS-level blur (if any) shows through, matching platform
     // image viewers.
     barrierColor: Colors.black.withValues(alpha: 0.92),
-    useSafeArea: false,
-    builder: (context) => _ImageViewer(
+    barrierDismissible: true,
+    barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
+    transitionDuration: const Duration(milliseconds: 220),
+    pageBuilder: (context, _, __) => _ImageViewer(
       urls: urls,
       initialIndex: initialIndex.clamp(0, urls.length - 1),
       zoomable: zoomable,
     ),
+    // Fade + a slight scale-up so the viewer grows into place instead of
+    // snapping in — the same feel platform photo viewers use.
+    transitionBuilder: (context, animation, _, child) {
+      final curved =
+          CurvedAnimation(parent: animation, curve: Curves.easeOutCubic);
+      return FadeTransition(
+        opacity: curved,
+        child: ScaleTransition(
+          scale: Tween<double>(begin: 0.92, end: 1).animate(curved),
+          child: child,
+        ),
+      );
+    },
   );
 }
 

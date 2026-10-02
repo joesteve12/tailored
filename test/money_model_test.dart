@@ -69,6 +69,7 @@ Payment _payment({
     method: 'cash',
     reason: reason,
     paidAt: DateTime(2026, 7, 10),
+    createdAt: DateTime(2026, 7, 10),
     receiptNumber: receiptNumber,
     orderTotalAtPayment: orderTotalAtPayment,
     amountPaidAfter: amountPaidAfter,

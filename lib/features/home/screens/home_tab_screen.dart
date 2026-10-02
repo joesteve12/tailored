@@ -10,6 +10,8 @@ import '../../../core/utils/order_labels.dart';
 import '../../../core/widgets/async_error_view.dart';
 import '../../../core/widgets/skeleton.dart';
 import '../../../core/widgets/stitch_border.dart';
+import '../../promotions/widgets/app_open_promo_modal.dart';
+import '../../promotions/widgets/home_banner_slot.dart';
 import '../../measurements/widgets/measurement_recipient_sheet.dart';
 import '../../tasks/state/tasks_providers.dart';
 import '../state/home_dashboard_providers.dart';
@@ -51,10 +53,17 @@ class HomeTabScreen extends ConsumerWidget {
             physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
             children: const [
+              // Zero-size: fires the app-open promo modal once per session /
+              // once per day (never mid-task — Home is a launchpad).
+              AppOpenPromoTrigger(),
               _HomeHeader(),
               SizedBox(height: 12),
               _Greeting(),
               SizedBox(height: 18),
+              // The singular Home slot: billing nudge (trial / past_due /
+              // over-limit) pre-empts a house promotion, which pre-empts
+              // nothing. Renders nothing when there's nothing to say.
+              HomeBannerSlot(),
               _InProductionHero(),
               SizedBox(height: 18),
               _TaskOverviewCard(),

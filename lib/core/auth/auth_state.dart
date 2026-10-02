@@ -15,6 +15,7 @@ import '../../features/measurements/state/dictionary_admin_notifiers.dart';
 import '../../features/measurements/state/measurement_set_providers.dart';
 import '../../features/orders/state/order_detail_notifier.dart';
 import '../../features/orders/state/order_list_notifier.dart';
+import '../../features/billing/state/entitlements_notifier.dart';
 
 /// Holds the logged-in user, or null if logged out.
 /// AsyncValue.loading while checking secure storage on cold start;
@@ -144,6 +145,9 @@ class AuthStateNotifier extends AsyncNotifier<User?> {
     ref.invalidate(fieldTemplateUsageProvider);
     ref.invalidate(orderListProvider);
     ref.invalidate(orderDetailProvider);
+    // Billing/plan state is per-tenant too — clear it so one shop's plan,
+    // usage, and saved-card tail can never render on the next login.
+    ref.invalidate(entitlementsProvider);
   }
 }
 

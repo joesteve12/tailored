@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/ads/interstitial_ad_manager.dart';
 import '../../../core/widgets/async_error_view.dart';
 import '../data/employee_repository.dart';
 import '../state/employee_list_notifier.dart';
@@ -92,7 +93,15 @@ class _EmployeeFormScreenState extends ConsumerState<EmployeeFormScreen> {
           context,
           widget.isEditing ? 'Employee updated' : 'Employee created',
         );
+        final wasCreate = !widget.isEditing;
+        final interstitial = ref.read(interstitialAdManagerProvider);
         context.pop();
+        // "Task complete" natural stop (AD_SYSTEM A3), create only.
+        if (wasCreate) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            interstitial.notifyTaskComplete();
+          });
+        }
       }
     } catch (e) {
       if (mounted) {

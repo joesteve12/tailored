@@ -2,12 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme/app_tokens.dart';
-import '../../../core/utils/pick_image.dart';
 import '../models/order_media.dart';
 import '../state/order_detail_notifier.dart';
+import 'media_picker.dart';
 
 import '../../../core/widgets/feedback.dart';
 import '../../../core/widgets/image_viewer.dart';
+import '../../../core/widgets/video_thumbnail.dart';
+import '../../../core/widgets/video_viewer.dart';
 /// The order-level media strip on the detail screen: up to 3 photos of the
 /// whole job, each removable, with an "add" tile while under the cap. Drives
 /// OrderDetailNotifier.addMedia / deleteMedia. Owns its own busy flag so the
@@ -39,7 +41,7 @@ class _OrderMediaSectionState extends ConsumerState<OrderMediaSection> {
   bool _busy = false;
 
   Future<void> _add() async {
-    final file = await pickImageFile(context);
+    final file = await pickOrderMedia(context, ref);
     if (file == null || !mounted) return;
 
     setState(() => _busy = true);
@@ -206,17 +208,19 @@ class _MediaThumb extends StatelessWidget {
       fit: StackFit.expand,
       children: [
         GestureDetector(
-          onTap: isVideo || imageIndex < 0
-              ? null
-              : () => showImageViewer(
-                    context,
-                    urls: imageUrls,
-                    initialIndex: imageIndex,
-                  ),
+          onTap: isVideo
+              ? () => showVideoViewer(context, url: media.fileUrl)
+              : (imageIndex < 0
+                  ? null
+                  : () => showImageViewer(
+                        context,
+                        urls: imageUrls,
+                        initialIndex: imageIndex,
+                      )),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(t.radiusLg),
             child: isVideo
-                ? placeholder
+                ? VideoThumbnail(url: media.fileUrl)
                 : Image.network(
                     media.fileUrl,
                     fit: BoxFit.cover,
@@ -286,10 +290,10 @@ class _AddTile extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.camera_alt_outlined, color: foreground),
+              Icon(Icons.add_a_photo_outlined, color: foreground),
               const SizedBox(height: 4),
               Text(
-                'Add photo',
+                'Add media',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       color: foreground,
                       fontWeight: t.fontWeightMedium,

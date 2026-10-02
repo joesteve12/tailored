@@ -382,12 +382,22 @@ class _PaymentsTab extends ConsumerWidget {
         if (payments.isEmpty) {
           return const _EmptyText(text: 'No payments yet.');
         }
+        // Only the most recently inserted entry can be deleted: every later
+        // row's frozen "balance remaining" counts an earlier one in, so
+        // removing one from underneath them would leave those receipts lying.
+        // The tail is by insertion order (createdAt), which is not the same as
+        // the paid_at-sorted display order once an entry has been back-dated —
+        // so the delete action can land on a row that isn't the top one.
+        final deletableId = payments
+            .reduce((a, b) => a.createdAt.isAfter(b.createdAt) ? a : b)
+            .id;
         return _ScrollableEntries(
           maxHeight: _maxHeight,
           children: [
             for (final p in payments)
               _PaymentRow(
                 payment: p,
+                canDelete: p.id == deletableId,
                 deleting: deletingId == p.id,
                 preparingReceipt: receiptId == p.id,
                 actionsLocked: deletingId != null,
@@ -414,6 +424,7 @@ class _PaymentsTab extends ConsumerWidget {
 class _PaymentRow extends StatelessWidget {
   const _PaymentRow({
     required this.payment,
+    required this.canDelete,
     required this.deleting,
     required this.preparingReceipt,
     required this.actionsLocked,
@@ -422,6 +433,11 @@ class _PaymentRow extends StatelessWidget {
   });
 
   final Payment payment;
+
+  /// Whether this is the deletable tail entry. Only the most recently inserted
+  /// payment or refund shows a delete action; older ones are unwound by
+  /// deleting the newer ones first, or reversed with a refund.
+  final bool canDelete;
   final bool deleting;
   final bool preparingReceipt;
   final bool actionsLocked;
@@ -559,6 +575,10 @@ class _PaymentRow extends StatelessWidget {
               icon: const Icon(Icons.receipt_long_outlined, size: 20),
               onPressed: actionsLocked ? null : onReceipt,
             ),
+          // Delete is offered only on the tail entry; the backend refuses any
+          // other, since removing it would strand a later receipt's frozen
+          // balance. Older entries are unwound newest-first or reversed with a
+          // refund.
           if (deleting)
             const Padding(
               padding: EdgeInsets.only(right: 8, top: 4),
@@ -568,7 +588,7 @@ class _PaymentRow extends StatelessWidget {
                 child: CircularProgressIndicator(strokeWidth: 2),
               ),
             )
-          else
+          else if (canDelete)
             IconButton(
               tooltip: 'Delete',
               visualDensity: VisualDensity.compact,
